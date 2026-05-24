@@ -60,9 +60,19 @@ console.log(greet('World'));
 > Start editing to see your changes appear here in real time.
 `;
 
+// maps local://N placeholders to blob URLs so dropped images stay short in the editor
+const imageStore = new Map<string, string>();
+let imageId = 0;
+
 function render(md: string): void {
+  // replace local:// placeholders with actual blob URLs before parsing
+  const resolved = md.replace(/\(local:\/\/(\d+)\)/g, (match, id) => {
+    const url = imageStore.get(`local://${id}`);
+    return url ? `(${url})` : match;
+  });
+
   // marked.parse returns string | Promise<string>; renderer is sync so cast is safe
-  preview.innerHTML = marked.parse(md) as string;
+  preview.innerHTML = marked.parse(resolved) as string;
 
   const text = md.trim();
   const words = text === '' ? 0 : text.split(/\s+/).length;
@@ -85,6 +95,40 @@ editor.addEventListener('keydown', (e: KeyboardEvent) => {
   const end = editor.selectionEnd;
   editor.value = editor.value.slice(0, start) + '  ' + editor.value.slice(end);
   editor.selectionStart = editor.selectionEnd = start + 2;
+  render(editor.value);
+});
+
+// drag & drop images - stores a blob URL and inserts a short local:// placeholder
+editor.addEventListener('dragover', (e: DragEvent) => {
+  if (!e.dataTransfer?.types.includes('Files')) return;
+  e.preventDefault();
+  editor.classList.add('drag-over');
+});
+
+editor.addEventListener('dragleave', () => {
+  editor.classList.remove('drag-over');
+});
+
+editor.addEventListener('drop', (e: DragEvent) => {
+  e.preventDefault();
+  editor.classList.remove('drag-over');
+
+  const files = Array.from(e.dataTransfer?.files ?? []).filter(f => f.type.startsWith('image/'));
+  if (files.length === 0) return;
+
+  let pos = editor.selectionStart;
+
+  for (const file of files) {
+    const id = `local://${imageId++}`;
+    imageStore.set(id, URL.createObjectURL(file));
+
+    const alt = file.name.replace(/\.[^.]+$/, '');
+    const snippet = `![${alt}](${id})`;
+    editor.value = editor.value.slice(0, pos) + snippet + editor.value.slice(pos);
+    pos += snippet.length;
+  }
+
+  editor.selectionStart = editor.selectionEnd = pos;
   render(editor.value);
 });
 

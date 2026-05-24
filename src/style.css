@@ -133,6 +133,11 @@ button:active { opacity: .8; }
 
 #editor::placeholder { color: var(--text-muted); }
 
+#editor.drag-over {
+  border-right-color: var(--accent);
+  box-shadow: inset -2px 0 0 var(--accent);
+}
+
 /* ── Divider ───────────────────────────────────────────────────────────────── */
 #divider {
   background: var(--divider);
@@ -170,6 +175,40 @@ button:active { opacity: .8; }
 .prose ul,
 .prose ol  { margin: .75em 0; padding-left: 1.75em; }
 .prose li  { margin: .3em 0; }
+
+/* task list - GitHub style: no bullets, custom checkboxes */
+.prose ul:has(> li > input[type="checkbox"]) {
+  list-style: none;
+  padding-left: 0;
+}
+
+.prose li:has(> input[type="checkbox"]) {
+  position: relative;
+  padding-left: 24px;
+}
+
+.prose li > input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: absolute;
+  left: 0;
+  top: 4px;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--border);
+  border-radius: 3px;
+  background-color: transparent;
+  cursor: default;
+}
+
+.prose li > input[type="checkbox"]:checked {
+  background-color: var(--text-muted);
+  border-color: var(--text-muted);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='white' d='M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z'/%3E%3C/svg%3E");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 10px;
+}
 
 .prose a   { color: var(--accent); text-decoration: none; }
 .prose a:hover { text-decoration: underline; }

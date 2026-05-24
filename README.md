@@ -1,50 +1,129 @@
+<div align="center">
+
 # Markdown Previewer
 
-A minimal split-view Markdown editor with live preview, syntax highlighting, and light/dark theme
+**A minimal split-view Markdown editor with live preview, syntax highlighting, and a CLI that opens any `.md` file in the browser**
 
-**[Live demo →](https://jarryuser.github.io/markdown-previewer/)**
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-→-2f81f7?style=flat-square)](https://jarryuser.github.io/markdown-previewer/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-5.1-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev/)
+[![marked](https://img.shields.io/badge/marked-12-orange?style=flat-square)](https://marked.js.org/)
+[![highlight.js](https://img.shields.io/badge/highlight.js-11-yellow?style=flat-square)](https://highlightjs.org/)
+[![GitHub Pages](https://img.shields.io/badge/Deployed%20on-GitHub%20Pages-222?style=flat-square&logo=github)](https://pages.github.com/)
+
+</div>
+
+---
+
+## Overview
+
+Markdown Previewer is a browser-based editor with a split-pane layout. Write Markdown on the left, see the rendered result on the right in real time. The output matches GitHub's rendering: GFM tables, task lists with custom checkboxes, and syntax-highlighted code blocks.
+
+The project also ships a small CLI (`mdp`) that renders any local `.md` file in the browser with the same styles and live-reloads the page whenever the file is saved
+
+---
 
 ## Features
 
-- Live preview with 60ms debounce — renders as you type
-- Syntax highlighting via highlight.js (100+ languages)
-- Drag the divider to resize editor and preview panes
-- Word and character counter
-- Copy Markdown to clipboard
-- Light / dark theme toggle
-- Tab key inserts spaces instead of leaving the textarea
-- GitHub Flavored Markdown (tables, strikethrough, task lists)
-- Zero runtime dependencies beyond marked + highlight.js
+| | Feature | Details |
+|---|---|---|
+| ⚡ | **Live preview** | Re-renders 60 ms after the last keystroke |
+| 🎨 | **Syntax highlighting** | highlight.js with 100+ languages; auto-detected when no language is specified |
+| ✅ | **GitHub-style task lists** | Custom checkboxes, no bullet points - matches GitHub's rendering |
+| 🖼️ | **Image drag & drop** | Drop an image onto the editor to insert it; stored as a short `local://N` reference, not base64 |
+| ↔️ | **Resizable panes** | Drag the divider; ratio is clamped between 20% and 80% |
+| 📊 | **Word & character counter** | Updates live in the toolbar |
+| 📋 | **Copy to clipboard** | Copies raw Markdown with one click |
+| 🌙 | **Light / dark theme** | Follows system preference by default; toggle in the toolbar |
+| ⌨️ | **Tab key** | Inserts two spaces instead of moving focus |
+| 📄 | **GitHub Flavored Markdown** | Tables, strikethrough, task lists, autolinks |
+
+---
+
+## CLI - `mdp`
+
+`mdp` opens any Markdown file in the browser using the same styles as the web app. The page live-reloads every time the file is saved. Images referenced with relative paths are served automatically from the file's directory
+
+### Install
+
+```bash
+# 1. clone the repo
+git clone https://github.com/jarryuser/markdown-previewer.git
+cd markdown-previewer
+
+# 2. install dependencies
+npm install
+
+# 3. build the CLI bundle
+npm run build:cli
+
+# 4. register the command globally
+npm link
+```
+
+### Usage
+
+```bash
+mdp README.md
+mdp ~/notes/ideas.md
+mdp /path/to/any/file.md
+```
+
+The browser opens automatically. Edit the file in any editor - the page reloads on each save
+
+### Uninstall
+
+```bash
+npm unlink -g markdown-previewer
+```
+
+---
+
+## Getting started (web app)
+
+```bash
+git clone https://github.com/jarryuser/markdown-previewer.git
+cd markdown-previewer
+npm install
+npm run dev       # http://localhost:5173
+npm run build     # production build -> dist/
+```
+
+---
+
+## Tech stack
+
+| Layer | Tool | Why |
+|---|---|---|
+| Language | TypeScript 5.3 | Type safety, strict mode enabled |
+| Markdown | marked.js v12 | Fast GFM parser with a clean extension API |
+| Highlighting | highlight.js v11 | 100+ languages, works in both browser and Node |
+| Bundler | Vite 5 | Instant HMR in dev, separate lib build for the CLI |
+| Deploy | GitHub Pages via Actions | Auto-deploys on push to `main` |
+
+---
 
 ## Roadmap
 
-- [ ] Syntax highlighting in the editor (replace textarea with CodeMirror)
-- [ ] Synchronized scrolling between editor and preview (with toggle)
-- [ ] Persist content in localStorage between sessions
-- [ ] Export preview as HTML file
-- [ ] Keyboard shortcuts for formatting (Ctrl+B, Ctrl+I, etc.)
-- [ ] Math support via KaTeX
-- [ ] Adjustable font size in the editor
-- [ ] Fullscreen mode for either pane
+### Done
 
-## Stack
+- [x] **CLI viewer** (`mdp`) - opens any `.md` file in the browser with live reload; local images are served from the file's directory
+- [x] **Image drag & drop** - drop images onto the editor; inserted as short `local://N` placeholders instead of base64
+- [x] **GitHub-style task lists** - custom checkboxes with no bullet points, matching GitHub's rendering
 
-<table>
-  <tr><td>Language</td><td>TypeScript</td></tr>
-  <tr><td>Markdown</td><td>marked.js v12</td></tr>
-  <tr><td>Highlighting</td><td>highlight.js v11</td></tr>
-  <tr><td>Bundler</td><td>Vite</td></tr>
-  <tr><td>Deploy</td><td>GitHub Pages</td></tr>
-</table>
+### Planned
 
-## Local development
+- [ ] **Syntax highlighting in the editor** - replace `<textarea>` with CodeMirror
+- [ ] **Synchronized scrolling** - keep editor and preview in sync while scrolling (with toggle)
+- [ ] **Persist content in localStorage** - survive page refreshes
+- [ ] **Export as HTML** - download the rendered preview as a standalone file
+- [ ] **Keyboard shortcuts** - Ctrl+B for bold, Ctrl+I for italic, etc.
+- [ ] **Math support** - render formulas via KaTeX
+- [ ] **Adjustable font size** - slider or buttons in the toolbar
+- [ ] **Fullscreen mode** - expand either pane to fill the screen
 
-```bash
-npm install
-npm run dev    # http://localhost:5173
-npm run build  # production build -> dist/
-```
+---
 
 ## License
 
-MIT
+MIT © [Dmytro Filiurskyi](https://github.com/jarryuser)

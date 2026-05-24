@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Markdown Previewer</title>
+  <link rel="stylesheet" href="/src/style.css" />
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"
+    id="hljs-theme"
+  />
+</head>
+<body>
+  <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
+  <header class="toolbar">
+    <span class="logo">MD</span>
+    <span class="toolbar-title">Markdown Previewer</span>
+    <div class="toolbar-actions">
+      <span id="word-count" class="stat">0 words</span>
+      <span id="char-count" class="stat">0 chars</span>
+      <button id="copy-btn">Copy MD</button>
+      <button id="clear-btn">Clear</button>
+      <button id="theme-btn">Dark</button>
+    </div>
+  </header>
+
+  <!-- ── Panes ───────────────────────────────────────────────────────────── -->
+  <div id="panes">
+    <textarea
+      id="editor"
+      spellcheck="false"
+      placeholder="Write Markdown here…"
+      aria-label="Markdown editor"
+    ></textarea>
+
+    <div id="divider" role="separator" aria-label="Resize panes"></div>
+
+    <div id="preview" class="prose" aria-label="Preview"></div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

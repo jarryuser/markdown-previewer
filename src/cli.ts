@@ -78,6 +78,21 @@ if (!process.argv[2]) {
 const fileDir = dirname(filePath);
 const title = basename(filePath);
 const sseClients = new Set<ServerResponse>();
+let shutdownTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleShutdown(): void {
+  if (shutdownTimer) return;
+  shutdownTimer = setTimeout(() => {
+    console.log('\nBrowser closed - stopping server');
+    process.exit(0);
+  }, 5000);
+}
+
+function cancelShutdown(): void {
+  if (!shutdownTimer) return;
+  clearTimeout(shutdownTimer);
+  shutdownTimer = null;
+}
 
 let md: string;
 try {
@@ -98,8 +113,12 @@ const server = createServer((req, res) => {
       'Connection': 'keep-alive',
     });
     res.write(': connected\n\n'); // SSE comment - keeps connection alive without triggering onmessage
+    cancelShutdown();
     sseClients.add(res);
-    req.on('close', () => sseClients.delete(res));
+    req.on('close', () => {
+      sseClients.delete(res);
+      if (sseClients.size === 0) scheduleShutdown();
+    });
     return;
   }
 

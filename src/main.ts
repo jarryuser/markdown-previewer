@@ -1,30 +1,37 @@
 import { marked } from 'marked';
 import hljs from 'highlight.js';
+import { EditorView, keymap } from '@codemirror/view';
+import { Compartment } from '@codemirror/state';
+import { basicSetup } from 'codemirror';
+import { markdown } from '@codemirror/lang-markdown';
+import { oneDark } from '@codemirror/theme-one-dark';
 
 // marked v5+ removed the `highlight` option - use a custom renderer instead
 marked.use({
   gfm: true,
-  breaks: false, // match GitHub behaviour: single \n = space, not <br>
+  breaks: false,
   renderer: {
     code(code: string, lang: string | undefined): string {
       if (lang && hljs.getLanguage(lang)) {
-        const highlighted = hljs.highlight(code, { language: lang }).value;
-        return `<pre><code class="hljs language-${lang}">${highlighted}</code></pre>`;
+        return `<pre><code class="hljs language-${lang}">${hljs.highlight(code, { language: lang }).value}</code></pre>`;
       }
-      const highlighted = hljs.highlightAuto(code).value;
-      return `<pre><code class="hljs">${highlighted}</code></pre>`;
+      return `<pre><code class="hljs">${hljs.highlightAuto(code).value}</code></pre>`;
     },
   },
 });
 
-const editor = document.getElementById('editor') as HTMLTextAreaElement;
 const preview = document.getElementById('preview') as HTMLElement;
 const wordCount = document.getElementById('word-count') as HTMLElement;
 const charCount = document.getElementById('char-count') as HTMLElement;
 const copyBtn = document.getElementById('copy-btn') as HTMLButtonElement;
 const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
 const themeBtn = document.getElementById('theme-btn') as HTMLButtonElement;
+const scrollBtn = document.getElementById('scroll-btn') as HTMLButtonElement;
+const wrapBtn = document.getElementById('wrap-btn') as HTMLButtonElement;
 const divider = document.getElementById('divider') as HTMLElement;
+const editorContainer = document.getElementById('editor') as HTMLElement;
+
+const STORAGE_KEY = 'md-content';
 
 const INITIAL = `# Markdown Previewer
 
@@ -80,81 +87,151 @@ function render(md: string): void {
   charCount.textContent = `${md.length} chars`;
 }
 
-// re-render 60ms after the last keystroke
 let debounceTimer = 0;
-editor.addEventListener('input', () => {
-  clearTimeout(debounceTimer);
-  debounceTimer = window.setTimeout(() => render(editor.value), 60);
-});
+let dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+const themeCompartment = new Compartment();
+const wrapCompartment = new Compartment();
+let wrapEnabled = true;
 
-// insert two spaces on Tab instead of losing focus
-editor.addEventListener('keydown', (e: KeyboardEvent) => {
-  if (e.key !== 'Tab') return;
-  e.preventDefault();
-  const start = editor.selectionStart;
-  const end = editor.selectionEnd;
-  editor.value = editor.value.slice(0, start) + '  ' + editor.value.slice(end);
-  editor.selectionStart = editor.selectionEnd = start + 2;
-  render(editor.value);
-});
-
-// drag & drop images - stores a blob URL and inserts a short local:// placeholder
-editor.addEventListener('dragover', (e: DragEvent) => {
-  if (!e.dataTransfer?.types.includes('Files')) return;
-  e.preventDefault();
-  editor.classList.add('drag-over');
-});
-
-editor.addEventListener('dragleave', () => {
-  editor.classList.remove('drag-over');
-});
-
-editor.addEventListener('drop', (e: DragEvent) => {
-  e.preventDefault();
-  editor.classList.remove('drag-over');
-
-  const files = Array.from(e.dataTransfer?.files ?? []).filter(f => f.type.startsWith('image/'));
-  if (files.length === 0) return;
-
-  let pos = editor.selectionStart;
-
-  for (const file of files) {
-    const id = `local://${imageId++}`;
-    imageStore.set(id, URL.createObjectURL(file));
-
-    const alt = file.name.replace(/\.[^.]+$/, '');
-    const snippet = `![${alt}](${id})`;
-    editor.value = editor.value.slice(0, pos) + snippet + editor.value.slice(pos);
-    pos += snippet.length;
-  }
-
-  editor.selectionStart = editor.selectionEnd = pos;
-  render(editor.value);
+const editorView = new EditorView({
+  doc: localStorage.getItem(STORAGE_KEY) ?? INITIAL,
+  extensions: [
+    basicSetup,
+    markdown(),
+    themeCompartment.of(dark ? oneDark : []),
+    wrapCompartment.of(EditorView.lineWrapping),
+    // insert 2 spaces on Tab instead of moving focus
+    keymap.of([{
+      key: 'Tab',
+      run: view => {
+        view.dispatch(view.state.replaceSelection('  '));
+        return true;
+      },
+    }]),
+    EditorView.updateListener.of(update => {
+      if (!update.docChanged) return;
+      const content = update.state.doc.toString();
+      localStorage.setItem(STORAGE_KEY, content);
+      clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(() => render(content), 60);
+    }),
+    // drag & drop images - stores a blob URL and inserts a short local:// placeholder
+    EditorView.domEventHandlers({
+      dragover: e => {
+        if (!e.dataTransfer?.types.includes('Files')) return false;
+        e.preventDefault();
+        editorContainer.classList.add('drag-over');
+        return true;
+      },
+      dragleave: () => {
+        editorContainer.classList.remove('drag-over');
+        return false;
+      },
+      drop: e => {
+        e.preventDefault();
+        editorContainer.classList.remove('drag-over');
+        const files = Array.from(e.dataTransfer?.files ?? [])
+          .filter(f => f.type.startsWith('image/'));
+        if (files.length === 0) return false;
+        const snippets = files.map(file => {
+          const id = `local://${imageId++}`;
+          imageStore.set(id, URL.createObjectURL(file));
+          const alt = file.name.replace(/\.[^.]+$/, '');
+          return `![${alt}](${id})`;
+        });
+        editorView.dispatch(editorView.state.replaceSelection(snippets.join('\n')));
+        return true;
+      },
+    }),
+  ],
+  parent: editorContainer,
 });
 
 copyBtn.addEventListener('click', async () => {
-  await navigator.clipboard.writeText(editor.value);
+  await navigator.clipboard.writeText(editorView.state.doc.toString());
   copyBtn.textContent = 'Copied!';
   setTimeout(() => (copyBtn.textContent = 'Copy MD'), 1500);
 });
 
 clearBtn.addEventListener('click', () => {
-  if (editor.value && confirm('Clear editor?')) {
-    editor.value = '';
+  const content = editorView.state.doc.toString();
+  if (content && confirm('Clear editor?')) {
+    editorView.dispatch({
+      changes: { from: 0, to: editorView.state.doc.length, insert: '' },
+    });
+    localStorage.removeItem(STORAGE_KEY);
     render('');
   }
 });
 
-let dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-
 function applyTheme(): void {
   document.documentElement.dataset['theme'] = dark ? 'dark' : 'light';
   themeBtn.textContent = dark ? 'Light' : 'Dark';
+  editorView.dispatch({
+    effects: themeCompartment.reconfigure(dark ? oneDark : []),
+  });
 }
 
 themeBtn.addEventListener('click', () => {
   dark = !dark;
   applyTheme();
+});
+
+wrapBtn.addEventListener('click', () => {
+  wrapEnabled = !wrapEnabled;
+  wrapBtn.classList.toggle('active', wrapEnabled);
+
+  // line heights change after toggling wrap, so save the top-visible line number
+  // before the reconfiguration and restore it after CodeMirror re-measures
+  const scrollEl = editorView.scrollDOM;
+  const topPos = editorView.lineBlockAtHeight(scrollEl.scrollTop).from;
+  const topLine = editorView.state.doc.lineAt(topPos).number;
+
+  editorView.dispatch({
+    effects: wrapCompartment.reconfigure(wrapEnabled ? EditorView.lineWrapping : []),
+  });
+
+  requestAnimationFrame(() => {
+    const line = editorView.state.doc.line(
+      Math.min(topLine, editorView.state.doc.lines)
+    );
+    editorView.dispatch({
+      effects: EditorView.scrollIntoView(line.from, { y: 'start', yMargin: 0 }),
+    });
+  });
+});
+
+// synchronized scrolling - tracks which pane is the scroll source to avoid feedback loops
+// without throttling user events (which caused the jerky feel)
+let syncEnabled = false;
+let syncSource: 'editor' | 'preview' | null = null;
+let syncTimer = 0;
+
+function claimSource(side: 'editor' | 'preview'): void {
+  syncSource = side;
+  clearTimeout(syncTimer);
+  syncTimer = window.setTimeout(() => { syncSource = null; }, 150);
+}
+
+scrollBtn.addEventListener('click', () => {
+  syncEnabled = !syncEnabled;
+  scrollBtn.classList.toggle('active', syncEnabled);
+});
+
+editorView.scrollDOM.addEventListener('scroll', () => {
+  if (!syncEnabled || syncSource === 'preview') return;
+  claimSource('editor');
+  const el = editorView.scrollDOM;
+  const ratio = el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
+  preview.scrollTop = ratio * Math.max(1, preview.scrollHeight - preview.clientHeight);
+});
+
+preview.addEventListener('scroll', () => {
+  if (!syncEnabled || syncSource === 'editor') return;
+  claimSource('preview');
+  const el = editorView.scrollDOM;
+  const ratio = preview.scrollTop / Math.max(1, preview.scrollHeight - preview.clientHeight);
+  el.scrollTop = ratio * Math.max(1, el.scrollHeight - el.clientHeight);
 });
 
 let dragging = false;
@@ -172,6 +249,6 @@ window.addEventListener('mousemove', (e: MouseEvent) => {
 
 window.addEventListener('mouseup', () => { dragging = false; });
 
-editor.value = INITIAL;
 applyTheme();
-render(INITIAL);
+wrapBtn.classList.add('active'); // wrap is on by default
+render(localStorage.getItem(STORAGE_KEY) ?? INITIAL);

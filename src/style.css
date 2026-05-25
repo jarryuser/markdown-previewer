@@ -108,6 +108,13 @@ button {
 button:hover { background: var(--btn-hover); }
 button:active { opacity: .8; }
 
+button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+button.active:hover { opacity: .85; }
+
 /* ── Panes ─────────────────────────────────────────────────────────────────── */
 #panes {
   display: grid;
@@ -115,28 +122,47 @@ button:active { opacity: .8; }
   height: calc(100vh - 48px);
 }
 
-/* ── Editor ────────────────────────────────────────────────────────────────── */
+/* ── Editor (CodeMirror host) ──────────────────────────────────────────────── */
 #editor {
   background: var(--bg-editor);
-  border: none;
   border-right: 1px solid var(--border);
-  color: var(--text);
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, Consolas, monospace;
-  font-size: 14px;
   height: 100%;
-  line-height: 1.65;
-  outline: none;
-  padding: 20px 24px;
-  resize: none;
-  width: 100%;
+  overflow: hidden;
 }
-
-#editor::placeholder { color: var(--text-muted); }
 
 #editor.drag-over {
   border-right-color: var(--accent);
   box-shadow: inset -2px 0 0 var(--accent);
 }
+
+/* CodeMirror overrides - match app theme */
+#editor .cm-editor {
+  height: 100%;
+  background: transparent;
+  color: var(--text);
+}
+
+#editor .cm-editor.cm-focused { outline: none; }
+
+#editor .cm-scroller {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.65;
+  padding: 20px 0 20px 8px;
+}
+
+#editor .cm-gutters {
+  background: var(--bg-editor);
+  border-right: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+#editor .cm-activeLine { background: rgba(128, 128, 128, 0.05); }
+#editor .cm-activeLineGutter { background: rgba(128, 128, 128, 0.05); }
+#editor .cm-selectionBackground { background: rgba(99, 123, 255, 0.2) !important; }
+
+/* light mode: keep CodeMirror syntax colors readable against our bg */
+#editor .cm-line { padding-left: 16px; }
 
 /* ── Divider ───────────────────────────────────────────────────────────────── */
 #divider {

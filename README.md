@@ -28,7 +28,11 @@ The project also ships a small CLI (`mdp`) that renders any local `.md` file in 
 | | Feature | Details |
 |---|---|---|
 | ⚡ | **Live preview** | Re-renders 60 ms after the last keystroke |
+| ✏️ | **CodeMirror editor** | Markdown syntax highlighting, line numbers, dark/light theme |
 | 🎨 | **Syntax highlighting** | highlight.js with 100+ languages; auto-detected when no language is specified |
+| 🔄 | **Synchronized scrolling** | Sync button links editor and preview scroll positions smoothly |
+| ↩️ | **Word wrap toggle** | Wrap button switches between wrapping and horizontal scroll; scroll position is preserved |
+| 💾 | **Persistent content** | Editor content is saved to localStorage and restored on reload |
 | ✅ | **GitHub-style task lists** | Custom checkboxes, no bullet points - matches GitHub's rendering |
 | 🖼️ | **Image drag & drop** | Drop an image onto the editor to insert it; stored as a short `local://N` reference, not base64 |
 | ↔️ | **Resizable panes** | Drag the divider; ratio is clamped between 20% and 80% |
@@ -110,12 +114,14 @@ npm run build     # production build -> dist/
 - [x] **CLI viewer** (`mdp`) - opens any `.md` file in the browser with live reload; local images are served from the file's directory
 - [x] **Image drag & drop** - drop images onto the editor; inserted as short `local://N` placeholders instead of base64
 - [x] **GitHub-style task lists** - custom checkboxes with no bullet points, matching GitHub's rendering
+- [x] **Syntax highlighting in the editor** - CodeMirror 6 with Markdown language support and dark/light theme
+- [x] **Synchronized scrolling** - Sync button in toolbar keeps editor and preview scroll positions in sync
+- [x] **Persist content in localStorage** - content survives page refreshes automatically
+- [x] **Word wrap toggle** - Wrap button switches line wrapping on/off; scroll position is restored after layout change
 
 ### Planned
 
-- [ ] **Syntax highlighting in the editor** - replace `<textarea>` with CodeMirror
-- [ ] **Synchronized scrolling** - keep editor and preview in sync while scrolling (with toggle)
-- [ ] **Persist content in localStorage** - survive page refreshes
+- [ ] **Vim / Neovim keybindings** - optional modal editing mode via CodeMirror's vim extension
 - [ ] **Export as HTML** - download the rendered preview as a standalone file
 - [ ] **Keyboard shortcuts** - Ctrl+B for bold, Ctrl+I for italic, etc.
 - [ ] **Math support** - render formulas via KaTeX

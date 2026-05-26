@@ -32,6 +32,8 @@ The project also ships a small CLI (`mdp`) that renders any local `.md` file in 
 | 🎨 | **Syntax highlighting** | highlight.js with 100+ languages; auto-detected when no language is specified |
 | 🔄 | **Synchronized scrolling** | Sync button links editor and preview scroll positions smoothly |
 | ↩️ | **Word wrap toggle** | Wrap button switches between wrapping and horizontal scroll; scroll position is preserved |
+| 📤 | **Export as HTML** | Downloads the rendered preview as a standalone `.html` file with all styles embedded |
+| ⌨️ | **Formatting shortcuts** | `Mod+B` bold, `Mod+I` italic, `Mod+K` link, `Mod+Shift+C` inline code |
 | 💾 | **Persistent content** | Editor content is saved to localStorage and restored on reload |
 | ✅ | **GitHub-style task lists** | Custom checkboxes, no bullet points - matches GitHub's rendering |
 | 🖼️ | **Image drag & drop** | Drop an image onto the editor to insert it; stored as a short `local://N` reference, not base64 |
@@ -118,12 +120,13 @@ npm run build     # production build -> dist/
 - [x] **Synchronized scrolling** - Sync button in toolbar keeps editor and preview scroll positions in sync
 - [x] **Persist content in localStorage** - content survives page refreshes automatically
 - [x] **Word wrap toggle** - Wrap button switches line wrapping on/off; scroll position is restored after layout change
+- [x] **Export as HTML** - downloads the rendered preview as a standalone file with all styles embedded
+- [x] **Formatting shortcuts** - `Mod+B` bold, `Mod+I` italic, `Mod+K` link, `Mod+Shift+C` inline code
 
 ### Planned
 
 - [ ] **Vim / Neovim keybindings** - optional modal editing mode via CodeMirror's vim extension
-- [ ] **Export as HTML** - download the rendered preview as a standalone file
-- [ ] **Keyboard shortcuts** - Ctrl+B for bold, Ctrl+I for italic, etc.
+- [ ] **Custom export filename** - prompt to edit the filename before the HTML file is downloaded
 - [ ] **Math support** - render formulas via KaTeX
 - [ ] **Adjustable font size** - slider or buttons in the toolbar
 - [ ] **Fullscreen mode** - expand either pane to fill the screen

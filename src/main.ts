@@ -1,10 +1,11 @@
 import { marked } from 'marked';
 import hljs from 'highlight.js';
 import { EditorView, keymap } from '@codemirror/view';
-import { Compartment } from '@codemirror/state';
+import { Compartment, EditorSelection, Prec } from '@codemirror/state';
 import { basicSetup } from 'codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
+import styles from './style.css?raw';
 
 // marked v5+ removed the `highlight` option - use a custom renderer instead
 marked.use({
@@ -24,6 +25,7 @@ const preview = document.getElementById('preview') as HTMLElement;
 const wordCount = document.getElementById('word-count') as HTMLElement;
 const charCount = document.getElementById('char-count') as HTMLElement;
 const copyBtn = document.getElementById('copy-btn') as HTMLButtonElement;
+const exportBtn = document.getElementById('export-btn') as HTMLButtonElement;
 const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
 const themeBtn = document.getElementById('theme-btn') as HTMLButtonElement;
 const scrollBtn = document.getElementById('scroll-btn') as HTMLButtonElement;
@@ -87,6 +89,68 @@ function render(md: string): void {
   charCount.textContent = `${md.length} chars`;
 }
 
+// toggles markers around the selection: adds them if absent, removes if already present
+function toggleWrap(view: EditorView, before: string, after: string): boolean {
+  view.dispatch(view.state.update(
+    view.state.changeByRange(range => {
+      const { from, to } = range;
+      const hasMarkers =
+        view.state.sliceDoc(from - before.length, from) === before &&
+        view.state.sliceDoc(to, to + after.length) === after;
+
+      if (hasMarkers) {
+        return {
+          changes: [
+            { from: from - before.length, to: from },
+            { from: to, to: to + after.length },
+          ],
+          range: EditorSelection.range(from - before.length, to - before.length),
+        };
+      }
+      if (range.empty) {
+        return {
+          changes: { from, insert: before + after },
+          range: EditorSelection.cursor(from + before.length),
+        };
+      }
+      return {
+        changes: [
+          { from, insert: before },
+          { from: to, insert: after },
+        ],
+        range: EditorSelection.range(from + before.length, to + before.length),
+      };
+    }),
+    { scrollIntoView: true, userEvent: 'input' },
+  ));
+  return true;
+}
+
+// inserts [selected text](url) - places cursor on 'url' so it can be typed immediately
+function insertLink(view: EditorView): boolean {
+  view.dispatch(view.state.update(
+    view.state.changeByRange(range => {
+      if (range.empty) {
+        return {
+          changes: { from: range.from, insert: '[](url)' },
+          range: EditorSelection.cursor(range.from + 1),
+        };
+      }
+      const text = view.state.sliceDoc(range.from, range.to);
+      const insert = `[${text}](url)`;
+      return {
+        changes: { from: range.from, to: range.to, insert },
+        range: EditorSelection.range(
+          range.from + text.length + 3,
+          range.from + text.length + 6,
+        ),
+      };
+    }),
+    { scrollIntoView: true, userEvent: 'input' },
+  ));
+  return true;
+}
+
 let debounceTimer = 0;
 let dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 const themeCompartment = new Compartment();
@@ -100,14 +164,17 @@ const editorView = new EditorView({
     markdown(),
     themeCompartment.of(dark ? oneDark : []),
     wrapCompartment.of(EditorView.lineWrapping),
-    // insert 2 spaces on Tab instead of moving focus
-    keymap.of([{
-      key: 'Tab',
-      run: view => {
-        view.dispatch(view.state.replaceSelection('  '));
-        return true;
-      },
-    }]),
+    // Prec.highest ensures our keys take priority over defaultKeymap in basicSetup
+    // (e.g. Mod-i is bound to selectLine there)
+    Prec.highest(keymap.of([
+      // insert 2 spaces on Tab instead of moving focus
+      { key: 'Tab', run: view => { view.dispatch(view.state.replaceSelection('  ')); return true; } },
+      // Markdown formatting shortcuts - press again to remove markers
+      { key: 'Mod-b', run: view => toggleWrap(view, '**', '**') },
+      { key: 'Mod-i', run: view => toggleWrap(view, '*', '*') },
+      { key: 'Mod-k', run: insertLink },
+      { key: 'Mod-Shift-c', run: view => toggleWrap(view, '`', '`') },
+    ])),
     EditorView.updateListener.of(update => {
       if (!update.docChanged) return;
       const content = update.state.doc.toString();
@@ -162,6 +229,44 @@ clearBtn.addEventListener('click', () => {
     localStorage.removeItem(STORAGE_KEY);
     render('');
   }
+});
+
+exportBtn.addEventListener('click', () => {
+  const theme = document.documentElement.dataset['theme'] ?? 'light';
+  // use first heading as filename, fall back to 'export'
+  const heading = editorView.state.doc.toString().match(/^#\s+(.+)/m)?.[1];
+  const filename = heading
+    ? heading.toLowerCase().replace(/[^\w]+/g, '-').replace(/^-|-$/g, '') + '.html'
+    : 'export.html';
+
+  const html = `<!DOCTYPE html>
+<html lang="en" data-theme="${theme}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${heading ?? 'Export'}</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" />
+  <style>
+    ${styles}
+    html, body { height: auto; overflow: auto; }
+  </style>
+</head>
+<body>
+  <div style="max-width: 860px; margin: 0 auto; padding: 32px 28px;">
+    <div class="prose">${preview.innerHTML}</div>
+  </div>
+</body>
+</html>`;
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 });
 
 function applyTheme(): void {

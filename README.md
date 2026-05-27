@@ -32,8 +32,10 @@ The project also ships a small CLI (`mdp`) that renders any local `.md` file in 
 | 🎨 | **Syntax highlighting** | highlight.js with 100+ languages; auto-detected when no language is specified |
 | 🔄 | **Synchronized scrolling** | Sync button links editor and preview scroll positions smoothly |
 | ↩️ | **Word wrap toggle** | Wrap button switches between wrapping and horizontal scroll; scroll position is preserved |
-| 📤 | **Export as HTML** | Downloads the rendered preview as a standalone `.html` file with all styles embedded |
-| ⌨️ | **Formatting shortcuts** | `Mod+B` bold, `Mod+I` italic, `Mod+K` link, `Mod+Shift+C` inline code |
+| 📤 | **Export as HTML** | Downloads the rendered preview as a standalone `.html` file; prompts for a custom filename |
+| ⌨️ | **Formatting shortcuts** | `Mod+B` bold, `Mod+I` italic, `Mod+K` link, `Mod+Shift+C` inline code; press again to remove |
+| 🔡 | **Adjustable font size** | A− / A+ buttons in the toolbar; persists across reloads |
+| ⛶ | **Fullscreen mode** | Full button expands the app to fill the screen |
 | 💾 | **Persistent content** | Editor content is saved to localStorage and restored on reload |
 | ✅ | **GitHub-style task lists** | Custom checkboxes, no bullet points - matches GitHub's rendering |
 | 🖼️ | **Image drag & drop** | Drop an image onto the editor to insert it; stored as a short `local://N` reference, not base64 |
@@ -121,15 +123,15 @@ npm run build     # production build -> dist/
 - [x] **Persist content in localStorage** - content survives page refreshes automatically
 - [x] **Word wrap toggle** - Wrap button switches line wrapping on/off; scroll position is restored after layout change
 - [x] **Export as HTML** - downloads the rendered preview as a standalone file with all styles embedded
-- [x] **Formatting shortcuts** - `Mod+B` bold, `Mod+I` italic, `Mod+K` link, `Mod+Shift+C` inline code
+- [x] **Formatting shortcuts** - `Mod+B` bold, `Mod+I` italic, `Mod+K` link, `Mod+Shift+C` inline code; press again to remove
+- [x] **Custom export filename** - prompts to edit the filename before downloading
+- [x] **Adjustable font size** - A− / A+ buttons; persists in localStorage
+- [x] **Fullscreen mode** - Full button expands the app to fill the screen
 
 ### Planned
 
 - [ ] **Vim / Neovim keybindings** - optional modal editing mode via CodeMirror's vim extension
-- [ ] **Custom export filename** - prompt to edit the filename before the HTML file is downloaded
 - [ ] **Math support** - render formulas via KaTeX
-- [ ] **Adjustable font size** - slider or buttons in the toolbar
-- [ ] **Fullscreen mode** - expand either pane to fill the screen
 
 ---
 

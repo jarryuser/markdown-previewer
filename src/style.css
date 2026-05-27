@@ -107,6 +107,8 @@ button {
 
 button:hover { background: var(--btn-hover); }
 button:active { opacity: .8; }
+button:disabled { opacity: .4; cursor: default; }
+button:disabled:hover { background: var(--btn-bg); }
 
 button.active {
   background: var(--accent);
@@ -146,7 +148,7 @@ button.active:hover { opacity: .85; }
 
 #editor .cm-scroller {
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, Consolas, monospace;
-  font-size: 14px;
+  font-size: var(--cm-font-size, 14px);
   line-height: 1.65;
   padding: 20px 0 20px 8px;
 }

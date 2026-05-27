@@ -30,10 +30,14 @@ const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
 const themeBtn = document.getElementById('theme-btn') as HTMLButtonElement;
 const scrollBtn = document.getElementById('scroll-btn') as HTMLButtonElement;
 const wrapBtn = document.getElementById('wrap-btn') as HTMLButtonElement;
+const fontDecBtn = document.getElementById('font-dec-btn') as HTMLButtonElement;
+const fontIncBtn = document.getElementById('font-inc-btn') as HTMLButtonElement;
+const fullscreenBtn = document.getElementById('fullscreen-btn') as HTMLButtonElement;
 const divider = document.getElementById('divider') as HTMLElement;
 const editorContainer = document.getElementById('editor') as HTMLElement;
 
 const STORAGE_KEY = 'md-content';
+const FONT_SIZE_KEY = 'md-font-size';
 
 const INITIAL = `# Markdown Previewer
 
@@ -233,11 +237,14 @@ clearBtn.addEventListener('click', () => {
 
 exportBtn.addEventListener('click', () => {
   const theme = document.documentElement.dataset['theme'] ?? 'light';
-  // use first heading as filename, fall back to 'export'
   const heading = editorView.state.doc.toString().match(/^#\s+(.+)/m)?.[1];
-  const filename = heading
+  const suggested = heading
     ? heading.toLowerCase().replace(/[^\w]+/g, '-').replace(/^-|-$/g, '') + '.html'
     : 'export.html';
+
+  const input = window.prompt('Save as:', suggested);
+  if (input === null) return; // cancelled
+  const filename = input.trim() || suggested;
 
   const html = `<!DOCTYPE html>
 <html lang="en" data-theme="${theme}">
@@ -306,6 +313,30 @@ wrapBtn.addEventListener('click', () => {
   });
 });
 
+let fontSize = parseInt(localStorage.getItem(FONT_SIZE_KEY) ?? '14', 10);
+
+function applyFontSize(): void {
+  document.documentElement.style.setProperty('--cm-font-size', `${fontSize}px`);
+  localStorage.setItem(FONT_SIZE_KEY, String(fontSize));
+  fontDecBtn.disabled = fontSize <= 11;
+  fontIncBtn.disabled = fontSize >= 20;
+}
+
+fontDecBtn.addEventListener('click', () => { fontSize--; applyFontSize(); });
+fontIncBtn.addEventListener('click', () => { fontSize++; applyFontSize(); });
+
+fullscreenBtn.addEventListener('click', () => {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen();
+  } else {
+    document.exitFullscreen();
+  }
+});
+
+document.addEventListener('fullscreenchange', () => {
+  fullscreenBtn.textContent = document.fullscreenElement ? 'Exit ⛶' : 'Full ⛶';
+});
+
 // synchronized scrolling - tracks which pane is the scroll source to avoid feedback loops
 // without throttling user events (which caused the jerky feel)
 let syncEnabled = false;
@@ -355,5 +386,6 @@ window.addEventListener('mousemove', (e: MouseEvent) => {
 window.addEventListener('mouseup', () => { dragging = false; });
 
 applyTheme();
+applyFontSize();
 wrapBtn.classList.add('active'); // wrap is on by default
 render(localStorage.getItem(STORAGE_KEY) ?? INITIAL);

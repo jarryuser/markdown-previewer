@@ -1,11 +1,16 @@
 import { marked } from 'marked';
+import markedKatex from 'marked-katex-extension';
 import hljs from 'highlight.js';
 import { EditorView, keymap } from '@codemirror/view';
 import { Compartment, EditorSelection, Prec } from '@codemirror/state';
 import { basicSetup } from 'codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
+import { vim } from '@replit/codemirror-vim';
 import styles from './style.css?raw';
+
+// KaTeX for math: $inline$ and $$block$$ syntax
+marked.use(markedKatex({ throwOnError: false }));
 
 // marked v5+ removed the `highlight` option - use a custom renderer instead
 marked.use({
@@ -32,12 +37,14 @@ const scrollBtn = document.getElementById('scroll-btn') as HTMLButtonElement;
 const wrapBtn = document.getElementById('wrap-btn') as HTMLButtonElement;
 const fontDecBtn = document.getElementById('font-dec-btn') as HTMLButtonElement;
 const fontIncBtn = document.getElementById('font-inc-btn') as HTMLButtonElement;
+const vimBtn = document.getElementById('vim-btn') as HTMLButtonElement;
 const fullscreenBtn = document.getElementById('fullscreen-btn') as HTMLButtonElement;
 const divider = document.getElementById('divider') as HTMLElement;
 const editorContainer = document.getElementById('editor') as HTMLElement;
 
 const STORAGE_KEY = 'md-content';
 const FONT_SIZE_KEY = 'md-font-size';
+const VIM_KEY = 'md-vim';
 
 const INITIAL = `# Markdown Previewer
 
@@ -159,7 +166,9 @@ let debounceTimer = 0;
 let dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 const themeCompartment = new Compartment();
 const wrapCompartment = new Compartment();
+const vimCompartment = new Compartment();
 let wrapEnabled = true;
+let vimEnabled = localStorage.getItem(VIM_KEY) === '1';
 
 const editorView = new EditorView({
   doc: localStorage.getItem(STORAGE_KEY) ?? INITIAL,
@@ -168,6 +177,7 @@ const editorView = new EditorView({
     markdown(),
     themeCompartment.of(dark ? oneDark : []),
     wrapCompartment.of(EditorView.lineWrapping),
+    vimCompartment.of(vimEnabled ? vim() : []),
     // Prec.highest ensures our keys take priority over defaultKeymap in basicSetup
     // (e.g. Mod-i is bound to selectLine there)
     Prec.highest(keymap.of([
@@ -325,6 +335,15 @@ function applyFontSize(): void {
 fontDecBtn.addEventListener('click', () => { fontSize--; applyFontSize(); });
 fontIncBtn.addEventListener('click', () => { fontSize++; applyFontSize(); });
 
+vimBtn.addEventListener('click', () => {
+  vimEnabled = !vimEnabled;
+  vimBtn.classList.toggle('active', vimEnabled);
+  localStorage.setItem(VIM_KEY, vimEnabled ? '1' : '0');
+  editorView.dispatch({
+    effects: vimCompartment.reconfigure(vimEnabled ? vim() : []),
+  });
+});
+
 fullscreenBtn.addEventListener('click', () => {
   if (!document.fullscreenElement) {
     document.documentElement.requestFullscreen();
@@ -387,5 +406,6 @@ window.addEventListener('mouseup', () => { dragging = false; });
 
 applyTheme();
 applyFontSize();
-wrapBtn.classList.add('active'); // wrap is on by default
+wrapBtn.classList.add('active');
+vimBtn.classList.toggle('active', vimEnabled);
 render(localStorage.getItem(STORAGE_KEY) ?? INITIAL);

@@ -166,6 +166,26 @@ button.active:hover { opacity: .85; }
 /* light mode: keep CodeMirror syntax colors readable against our bg */
 #editor .cm-line { padding-left: 16px; }
 
+/* vim mode status bar */
+#editor .cm-vim-panel {
+  background: var(--bg-toolbar);
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  font-family: 'SF Mono', 'Fira Code', Menlo, Consolas, monospace;
+  font-size: 13px;
+  padding: 2px 16px;
+}
+
+#editor .cm-vim-panel input {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: inherit;
+  outline: none;
+  width: 100%;
+}
+
 /* ── Divider ───────────────────────────────────────────────────────────────── */
 #divider {
   background: var(--divider);
@@ -317,3 +337,11 @@ button.active:hover { opacity: .85; }
 [data-theme="dark"] .hljs-built_in { color: #ffa657; }
 [data-theme="dark"] .hljs-attr     { color: #79c0ff; }
 [data-theme="dark"] .hljs-type     { color: #79c0ff; }
+
+/* KaTeX */
+.prose .katex-display {
+  margin: 1em 0;
+  overflow-x: auto;
+}
+
+[data-theme="dark"] .katex { color: var(--text); }

@@ -36,6 +36,8 @@ The project also ships a small CLI (`mdp`) that renders any local `.md` file in 
 | ⌨️ | **Formatting shortcuts** | `Mod+B` bold, `Mod+I` italic, `Mod+K` link, `Mod+Shift+C` inline code; press again to remove |
 | 🔡 | **Adjustable font size** | A− / A+ buttons in the toolbar; persists across reloads |
 | ⛶ | **Fullscreen mode** | Full button expands the app to fill the screen |
+| 🔡 | **Vim keybindings** | Vim button toggles modal editing; Normal / Insert / Visual modes with status bar |
+| ∑ | **Math support** | KaTeX renders `$inline$` and `$$block$$` formulas |
 | 💾 | **Persistent content** | Editor content is saved to localStorage and restored on reload |
 | ✅ | **GitHub-style task lists** | Custom checkboxes, no bullet points - matches GitHub's rendering |
 | 🖼️ | **Image drag & drop** | Drop an image onto the editor to insert it; stored as a short `local://N` reference, not base64 |
@@ -50,7 +52,12 @@ The project also ships a small CLI (`mdp`) that renders any local `.md` file in 
 
 ## CLI - `mdp`
 
-`mdp` opens any Markdown file in the browser using the same styles as the web app. The page live-reloads every time the file is saved. Images referenced with relative paths are served automatically from the file's directory
+`mdp` works in two modes:
+
+- **File mode** — opens a single `.md` file; page live-reloads on every save
+- **Directory mode** — opens a directory with a file tree sidebar; click any file to preview it; reloads when the current file changes
+
+Images referenced with relative paths are served automatically
 
 ### Install
 
@@ -72,12 +79,16 @@ npm link
 ### Usage
 
 ```bash
+# single file
 mdp README.md
 mdp ~/notes/ideas.md
-mdp /path/to/any/file.md
+
+# entire directory (Obsidian vault, notes folder, etc.)
+mdp ~/notes/
+mdp ./docs/
 ```
 
-The browser opens automatically. Edit the file in any editor - the page reloads on each save
+The browser opens automatically. Edit files in any editor - the page reloads on each save
 
 ### Uninstall
 
@@ -127,11 +138,27 @@ npm run build     # production build -> dist/
 - [x] **Custom export filename** - prompts to edit the filename before downloading
 - [x] **Adjustable font size** - A− / A+ buttons; persists in localStorage
 - [x] **Fullscreen mode** - Full button expands the app to fill the screen
+- [x] **Vim keybindings** - Vim button toggles modal editing with Normal / Insert / Visual modes and status bar
+- [x] **Math support** - KaTeX renders `$inline$` and `$$block$$` formulas in the preview
+- [x] **Directory mode** - `mdp ./notes/` opens a directory with a file tree sidebar; click any `.md` file to preview; live reload on save
 
 ### Planned
 
-- [ ] **Vim / Neovim keybindings** - optional modal editing mode via CodeMirror's vim extension
-- [ ] **Math support** - render formulas via KaTeX
+**Web editor**
+
+- [ ] **Find & replace** - search and replace text in the editor (`Mod+F` / `Mod+H`)
+- [ ] **Table of contents** - sidebar panel with anchors generated from headings; click to scroll the preview
+- [ ] **Mermaid diagrams** - render diagrams in ` ```mermaid ` code blocks via mermaid.js
+- [ ] **Image paste from clipboard** - paste images with `Ctrl+V`, stored the same way as drag & drop
+- [ ] **Print / PDF export** - print button with print-friendly CSS that hides the editor and keeps only the prose
+- [ ] **Custom themes** - additional color schemes beyond light and dark
+
+**CLI**
+
+- [ ] **Search in file tree** - filter files by name in the sidebar (triggered by `/`)
+- [ ] **`--port` flag** - specify a fixed port instead of a random one (`mdp README.md --port 3000`)
+- [ ] **Wikilinks** - resolve `[[filename]]` Obsidian-style links as navigation between files in directory mode
+- [ ] **Recent files** - `mdp` with no arguments shows a list of recently opened files and directories
 
 ---
 

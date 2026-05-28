@@ -120,7 +120,7 @@ const THEME_SCRIPT = `<script>(function(){
 })();</script>`;
 
 function buildFilePage(md: string, title: string): string {
-  const body = marked.parse(md) as string;
+  const body = marked.parse(stripFrontmatter(md)) as string;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>

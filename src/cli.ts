@@ -1,7 +1,8 @@
 import { createServer } from 'node:http';
 import type { ServerResponse, IncomingMessage } from 'node:http';
-import { readFileSync, watchFile, watch, statSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, watchFile, watch, statSync, readdirSync } from 'node:fs';
 import { resolve, dirname, extname, basename, relative, join } from 'node:path';
+import { homedir } from 'node:os';
 import { exec } from 'node:child_process';
 import type { AddressInfo } from 'node:net';
 import { marked } from 'marked';
@@ -69,11 +70,38 @@ function serveFile(res: ServerResponse, filePath: string, mime: string): boolean
   }
 }
 
+// converts [[target]] / [[target|alias]] wikilinks to regular markdown links
+function resolveWikilinks(md: string): string {
+  return md.replace(/\[\[([^\]|#\n]+?)(?:\|([^\]\n]+?))?\]\]/g, (_, target, alias) => {
+    const label = (alias ?? target).trim();
+    return `[${label}](/__find?name=${encodeURIComponent(target.trim())})`;
+  });
+}
+
+// recent files history stored in ~/.mdp-history.json
+const HISTORY_FILE = join(homedir(), '.mdp-history.json');
+const HISTORY_MAX = 15;
+
+function readHistory(): string[] {
+  try {
+    return JSON.parse(readFileSync(HISTORY_FILE, 'utf-8')) as string[];
+  } catch {
+    return [];
+  }
+}
+
+function writeHistory(path: string): void {
+  try {
+    const prev = readHistory().filter(p => p !== path);
+    writeFileSync(HISTORY_FILE, JSON.stringify([path, ...prev].slice(0, HISTORY_MAX)));
+  } catch { /* ignore write errors */ }
+}
+
 // file tree used by directory mode
 interface FileNode {
   name: string;
-  path?: string;       // relative path for .md files
-  children?: FileNode[]; // set for directories
+  path?: string;
+  children?: FileNode[];
 }
 
 function buildTree(dir: string, base: string): FileNode[] {
@@ -106,6 +134,21 @@ function buildTree(dir: string, base: string): FileNode[] {
   }
 
   return nodes;
+}
+
+// searches the tree for a file whose name (without .md) matches the given name
+function findInTree(nodes: FileNode[], name: string): string | null {
+  const lower = name.toLowerCase();
+  for (const node of nodes) {
+    if (node.path && node.name.replace(/\.md$/i, '').toLowerCase() === lower) {
+      return node.path;
+    }
+    if (node.children) {
+      const found = findInTree(node.children, name);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 // shared <head> snippets
@@ -158,9 +201,11 @@ function buildDirPage(dirName: string): string {
     html, body { height: 100%; overflow: hidden; }
     #app { display: grid; grid-template-columns: 260px 1fr; height: 100%; }
     #sidebar {
-      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
       border-right: 1px solid var(--border);
       background: var(--bg-toolbar);
+      overflow: hidden;
     }
     .sidebar-header {
       display: flex;
@@ -169,6 +214,7 @@ function buildDirPage(dirName: string): string {
       gap: 6px;
       padding: 10px 8px 10px 12px;
       border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
     }
     .sidebar-title {
       font-size: 11px;
@@ -186,7 +232,24 @@ function buildDirPage(dirName: string): string {
       font-size: 11px;
       padding: 2px 7px;
     }
-    #tree { padding: 4px 0 16px; }
+    #search-bar {
+      display: none;
+      padding: 8px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    #search-input {
+      width: 100%;
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+    }
+    #search-input:focus { border-color: var(--accent); }
+    #tree { padding: 4px 0 16px; overflow-y: auto; flex: 1; }
     #content { overflow-y: auto; padding: 32px 28px; }
     .empty-hint { color: var(--text-muted); font-size: 14px; }
     details > summary { list-style: none; }
@@ -228,6 +291,9 @@ function buildDirPage(dirName: string): string {
         <span class="sidebar-title">${escHtml(dirName)}</span>
         <button class="collapse-btn" id="collapse-btn" title="Collapse all">−</button>
       </div>
+      <div id="search-bar">
+        <input id="search-input" type="text" placeholder="Filter files..." autocomplete="off" spellcheck="false" />
+      </div>
       <div id="tree"></div>
     </aside>
     <main id="content">
@@ -239,6 +305,9 @@ function buildDirPage(dirName: string): string {
   <script>
     var prose = document.getElementById('prose');
     var currentPath = location.hash.slice(1) || null;
+    var searchBar = document.getElementById('search-bar');
+    var searchInput = document.getElementById('search-input');
+    var searchActive = false;
 
     function esc(s) {
       return String(s)
@@ -267,6 +336,19 @@ function buildDirPage(dirName: string): string {
       });
     }
 
+    // intercept clicks on wikilinks rendered as /__find?name=... hrefs
+    function attachWikilinkHandlers() {
+      prose.querySelectorAll('a[href^="/__find"]').forEach(function(a) {
+        a.addEventListener('click', function(e) {
+          e.preventDefault();
+          fetch(a.getAttribute('href'))
+            .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); })
+            .then(function(d) { moveFocus(null); loadFile(d.path); })
+            .catch(function() { /* target file not found - do nothing */ });
+        });
+      });
+    }
+
     function loadFile(path) {
       currentPath = path;
       location.hash = path;
@@ -276,7 +358,11 @@ function buildDirPage(dirName: string): string {
           if (!r.ok) throw new Error('HTTP ' + r.status);
           return r.json();
         })
-        .then(function(d) { prose.innerHTML = d.html; document.title = d.title; })
+        .then(function(d) {
+          prose.innerHTML = d.html;
+          document.title = d.title;
+          attachWikilinkHandlers();
+        })
         .catch(function(err) {
           prose.innerHTML = '<p class="empty-hint">Could not load: ' + esc(path) + '</p>';
           console.error(err);
@@ -291,14 +377,18 @@ function buildDirPage(dirName: string): string {
       return null;
     }
 
-    // keyboard navigation: j/k move up/down, l/Enter open, h collapse/go to parent
     var focusedEl = null;
 
     function visibleItems() {
+      // in search mode only show matching file items (dir-labels are hidden)
+      if (searchActive) {
+        return Array.from(document.querySelectorAll('.file-item')).filter(function(el) {
+          return el.style.display !== 'none';
+        });
+      }
       return Array.from(document.querySelectorAll('.dir-label, .file-item')).filter(function(el) {
-        // dir-label is a <summary> - the browser always renders it even when
-        // its own <details> is closed, so skip that immediate parent and only
-        // check ancestors above it
+        // dir-label is a <summary> - always rendered even when its own <details> is closed;
+        // skip the immediate parent and only check ancestors above it
         var start = el.classList.contains('dir-label')
           ? (el.parentElement ? el.parentElement.parentElement : null)
           : el.parentElement;
@@ -323,8 +413,63 @@ function buildDirPage(dirName: string): string {
       }
     }
 
+    // search: / opens, Escape closes, ArrowUp/Down navigate, Enter opens first match
+    function openSearch() {
+      searchActive = true;
+      searchBar.style.display = '';
+      searchInput.focus();
+      filterFiles('');
+    }
+
+    function closeSearch() {
+      searchActive = false;
+      searchBar.style.display = 'none';
+      searchInput.value = '';
+      document.querySelectorAll('.file-item').forEach(function(el) { el.style.display = ''; });
+      document.querySelectorAll('#tree details').forEach(function(el) { el.style.display = ''; });
+      if (focusedEl) { focusedEl.classList.remove('tree-focused'); focusedEl = null; }
+    }
+
+    function filterFiles(q) {
+      var lower = q.toLowerCase();
+      document.querySelectorAll('.file-item').forEach(function(el) {
+        el.style.display = (!lower || el.textContent.toLowerCase().includes(lower)) ? '' : 'none';
+      });
+      // hide folders that contain no visible files
+      document.querySelectorAll('#tree details').forEach(function(det) {
+        var hasVisible = Array.from(det.querySelectorAll('.file-item')).some(function(el) {
+          return el.style.display !== 'none';
+        });
+        det.style.display = hasVisible ? '' : 'none';
+      });
+    }
+
+    searchInput.addEventListener('input', function() { filterFiles(searchInput.value); });
+    searchInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') { e.preventDefault(); closeSearch(); return; }
+      var items = visibleItems();
+      var idx = focusedEl ? items.indexOf(focusedEl) : -1;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        moveFocus(items[idx < 0 ? 0 : Math.min(idx + 1, items.length - 1)], false);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        moveFocus(items[idx <= 0 ? 0 : idx - 1], false);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        var target = (focusedEl && items.includes(focusedEl)) ? focusedEl : items[0];
+        if (target && target.classList.contains('file-item')) {
+          loadFile(target.dataset.path);
+          closeSearch();
+        }
+      }
+    });
+
+    // main keyboard handler - j/k/h/l navigation + / for search
     document.addEventListener('keydown', function(e) {
+      if (document.activeElement === searchInput) return;
       var k = e.key;
+      if (k === '/' && !searchActive) { e.preventDefault(); openSearch(); return; }
       if (k !== 'j' && k !== 'k' && k !== 'h' && k !== 'l' && k !== 'Enter'
           && k !== 'ArrowUp' && k !== 'ArrowDown' && k !== 'ArrowLeft' && k !== 'ArrowRight') return;
       var items = visibleItems();
@@ -408,13 +553,50 @@ function cancelShutdown(): void {
   shutdownTimer = null;
 }
 
-// argument validation
-if (!process.argv[2]) {
-  console.error('Usage: mdp <file.md>  or  mdp <directory>');
-  process.exit(1);
+// argument parsing - supports --port N flag
+const args = process.argv.slice(2);
+let portArg: number | undefined;
+const pathArgs: string[] = [];
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--port' && args[i + 1]) {
+    portArg = parseInt(args[i + 1], 10);
+    if (isNaN(portArg) || portArg < 1 || portArg > 65535) {
+      console.error('Invalid port number');
+      process.exit(1);
+    }
+    i++;
+  } else {
+    pathArgs.push(args[i]);
+  }
 }
 
-const argPath = resolve(process.argv[2]);
+// no path given - show recent files list
+if (pathArgs.length === 0) {
+  const history = readHistory();
+  if (history.length === 0) {
+    console.error('Usage: mdp <file.md>  or  mdp <directory>');
+    process.exit(1);
+  }
+  console.log('Recent:\n');
+  history.forEach((p, i) => console.log(`  ${i + 1}.  ${p}`));
+  console.log('\nRun: mdp <number>  to reopen, or  mdp <path>');
+  process.exit(0);
+}
+
+// support `mdp 2` to reopen the 2nd recent entry
+const rawPath = pathArgs[0];
+let resolvedInput = rawPath;
+if (/^\d+$/.test(rawPath)) {
+  const history = readHistory();
+  const idx = parseInt(rawPath, 10);
+  if (idx < 1 || idx > history.length) {
+    console.error(`No recent entry #${idx}. Run mdp with no arguments to see the list.`);
+    process.exit(1);
+  }
+  resolvedInput = history[idx - 1];
+}
+
+const argPath = resolve(resolvedInput);
 let isDir = false;
 try {
   isDir = statSync(argPath).isDirectory();
@@ -422,6 +604,8 @@ try {
   console.error(`Cannot access: ${argPath}`);
   process.exit(1);
 }
+
+writeHistory(argPath);
 
 // file mode setup
 let currentMd = '';
@@ -487,7 +671,6 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
   }
 
   if (isDir) {
-    // directory mode routes
     if (pathname === '/' || pathname === '/index.html') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(buildDirPage(basename(argPath)));
@@ -510,11 +693,25 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       }
       try {
         const content = readFileSync(filePath, 'utf-8');
-        const html = marked.parse(stripFrontmatter(content)) as string;
+        const html = marked.parse(resolveWikilinks(stripFrontmatter(content))) as string;
         const title = basename(p).replace(/\.md$/, '');
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ html, title }));
       } catch {
+        res.writeHead(404); res.end();
+      }
+      return;
+    }
+
+    // resolve [[wikilink]] targets to file paths within the directory
+    if (pathname === '/__find') {
+      const name = url.searchParams.get('name') ?? '';
+      if (!name) { res.writeHead(400); res.end(); return; }
+      const found = findInTree(buildTree(argPath, argPath), name);
+      if (found) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ path: found }));
+      } else {
         res.writeHead(404); res.end();
       }
       return;
@@ -546,13 +743,13 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
   res.writeHead(404); res.end();
 });
 
-server.listen(0, '127.0.0.1', () => {
+server.listen(portArg ?? 0, '127.0.0.1', () => {
   const { port } = server.address() as AddressInfo;
   const previewUrl = `http://localhost:${port}`;
   if (isDir) {
     console.log(`Directory: ${argPath}`);
   } else {
-    console.log(`File:    ${argPath}`);
+    console.log(`File:      ${argPath}`);
   }
   console.log(`Preview:   ${previewUrl}`);
   openBrowser(previewUrl);

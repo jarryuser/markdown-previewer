@@ -141,6 +141,10 @@ npm run build     # production build -> dist/
 - [x] **Vim keybindings** - Vim button toggles modal editing with Normal / Insert / Visual modes and status bar
 - [x] **Math support** - KaTeX renders `$inline$` and `$$block$$` formulas in the preview
 - [x] **Directory mode** - `mdp ./notes/` opens a directory with a file tree sidebar; click any `.md` file to preview; live reload on save
+- [x] **`--port` flag** - specify a fixed port: `mdp README.md --port 3000`
+- [x] **Recent files** - `mdp` with no arguments shows a numbered list of recently opened files; `mdp 2` reopens entry #2
+- [x] **Search in file tree** - press `/` to filter files by name; `↑`/`↓` to navigate results; `Enter` to open; `Escape` to close
+- [x] **Wikilinks** - `[[filename]]` and `[[filename|alias]]` links in directory mode navigate between files in the vault
 
 ### Planned
 
@@ -154,11 +158,6 @@ npm run build     # production build -> dist/
 - [ ] **Custom themes** - additional color schemes beyond light and dark
 
 **CLI**
-
-- [ ] **Search in file tree** - filter files by name in the sidebar (triggered by `/`)
-- [ ] **`--port` flag** - specify a fixed port instead of a random one (`mdp README.md --port 3000`)
-- [ ] **Wikilinks** - resolve `[[filename]]` Obsidian-style links as navigation between files in directory mode
-- [ ] **Recent files** - `mdp` with no arguments shows a list of recently opened files and directories
 
 ---
 

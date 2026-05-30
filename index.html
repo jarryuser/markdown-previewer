@@ -15,6 +15,7 @@
     rel="stylesheet"
     href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
   />
+  <script defer src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 </head>
 <body>
   <header class="toolbar">
@@ -26,10 +27,12 @@
       <button id="copy-btn">Copy MD</button>
       <button id="export-btn">Export</button>
       <button id="clear-btn">Clear</button>
+      <button id="find-btn" title="Find / Replace (Mod+F)">Find</button>
       <button id="font-dec-btn" title="Decrease font size">A−</button>
       <button id="font-inc-btn" title="Increase font size">A+</button>
       <button id="wrap-btn">Wrap</button>
       <button id="scroll-btn">Sync</button>
+      <button id="toc-btn" title="Table of contents">TOC</button>
       <button id="vim-btn">Vim</button>
       <button id="fullscreen-btn">Full ⛶</button>
       <button id="theme-btn">Dark</button>
@@ -41,7 +44,10 @@
 
     <div id="divider" role="separator" aria-label="Resize panes"></div>
 
-    <div id="preview" class="prose" aria-label="Preview"></div>
+    <div id="preview-pane">
+      <div id="preview" class="prose" aria-label="Preview"></div>
+      <div id="toc" aria-label="Table of contents"></div>
+    </div>
   </div>
 
   <script type="module" src="/src/main.ts"></script>

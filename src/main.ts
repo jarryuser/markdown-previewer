@@ -7,7 +7,13 @@ import { basicSetup } from 'codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { vim } from '@replit/codemirror-vim';
+import { openSearchPanel } from '@codemirror/search';
 import styles from './style.css?raw';
+
+// mermaid is loaded from CDN (defer) - access via window to avoid TS errors
+function getMermaid() {
+  return (window as unknown as { mermaid?: { initialize(c: Record<string, unknown>): void; run(o?: { nodes?: Element[] }): void } }).mermaid;
+}
 
 // KaTeX for math: $inline$ and $$block$$ syntax
 marked.use(markedKatex({ throwOnError: false }));
@@ -18,6 +24,10 @@ marked.use({
   breaks: false,
   renderer: {
     code(code: string, lang: string | undefined): string {
+      if (lang === 'mermaid') {
+        const safe = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `<div class="mermaid">${safe}</div>`;
+      }
       if (lang && hljs.getLanguage(lang)) {
         return `<pre><code class="hljs language-${lang}">${hljs.highlight(code, { language: lang }).value}</code></pre>`;
       }
@@ -39,6 +49,9 @@ const fontDecBtn = document.getElementById('font-dec-btn') as HTMLButtonElement;
 const fontIncBtn = document.getElementById('font-inc-btn') as HTMLButtonElement;
 const vimBtn = document.getElementById('vim-btn') as HTMLButtonElement;
 const fullscreenBtn = document.getElementById('fullscreen-btn') as HTMLButtonElement;
+const findBtn = document.getElementById('find-btn') as HTMLButtonElement;
+const tocBtn = document.getElementById('toc-btn') as HTMLButtonElement;
+const tocPanel = document.getElementById('toc') as HTMLElement;
 const divider = document.getElementById('divider') as HTMLElement;
 const editorContainer = document.getElementById('editor') as HTMLElement;
 
@@ -84,6 +97,19 @@ console.log(greet('World'));
 const imageStore = new Map<string, string>();
 let imageId = 0;
 
+function buildToc(): void {
+  const headings = Array.from(preview.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+  const items = headings.map((h, i) => {
+    const level = parseInt(h.tagName[1]);
+    const text = (h as HTMLElement).innerText;
+    return `<div class="toc-item toc-h${level}" data-index="${i}">${text}</div>`;
+  }).join('');
+  tocPanel.innerHTML = `<div class="toc-title">Contents</div><div class="toc-items">${items || '<p class="toc-empty">No headings</p>'}</div>`;
+  tocPanel.querySelectorAll<HTMLElement>('.toc-item').forEach((item, i) => {
+    item.addEventListener('click', () => headings[i].scrollIntoView({ behavior: 'smooth' }));
+  });
+}
+
 function render(md: string): void {
   // replace local:// placeholders with actual blob URLs before parsing
   const resolved = md.replace(/\(local:\/\/(\d+)\)/g, (match, id) => {
@@ -93,6 +119,12 @@ function render(md: string): void {
 
   // marked.parse returns string | Promise<string>; renderer is sync so cast is safe
   preview.innerHTML = marked.parse(resolved) as string;
+
+  // render mermaid diagrams if present
+  const diagrams = Array.from(preview.querySelectorAll<Element>('.mermaid'));
+  if (diagrams.length) getMermaid()?.run({ nodes: diagrams });
+
+  buildToc();
 
   const text = md.trim();
   const words = text === '' ? 0 : text.split(/\s+/).length;
@@ -292,6 +324,9 @@ function applyTheme(): void {
   editorView.dispatch({
     effects: themeCompartment.reconfigure(dark ? oneDark : []),
   });
+  // re-initialize mermaid with new theme and re-render diagrams
+  getMermaid()?.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default' });
+  if (preview.querySelector('.mermaid svg')) render(editorView.state.doc.toString());
 }
 
 themeBtn.addEventListener('click', () => {
@@ -342,6 +377,17 @@ vimBtn.addEventListener('click', () => {
   editorView.dispatch({
     effects: vimCompartment.reconfigure(vimEnabled ? vim() : []),
   });
+});
+
+findBtn.addEventListener('click', () => {
+  openSearchPanel(editorView);
+  editorView.focus();
+});
+
+tocBtn.addEventListener('click', () => {
+  const active = tocPanel.classList.toggle('active');
+  tocBtn.classList.toggle('active', active);
+  if (active) buildToc();
 });
 
 fullscreenBtn.addEventListener('click', () => {
@@ -408,4 +454,8 @@ applyTheme();
 applyFontSize();
 wrapBtn.classList.add('active');
 vimBtn.classList.toggle('active', vimEnabled);
+// initialize mermaid after defer script has loaded
+window.addEventListener('load', () => {
+  getMermaid()?.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default' });
+});
 render(localStorage.getItem(STORAGE_KEY) ?? INITIAL);

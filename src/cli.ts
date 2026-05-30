@@ -16,6 +16,10 @@ marked.use({
   breaks: false,
   renderer: {
     code(code: string, lang: string | undefined): string {
+      if (lang === 'mermaid') {
+        const safe = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `<div class="mermaid">${safe}</div>`;
+      }
       if (lang && hljs.getLanguage(lang)) {
         return `<pre><code class="hljs language-${lang}">${hljs.highlight(code, { language: lang }).value}</code></pre>`;
       }
@@ -154,6 +158,8 @@ function findInTree(nodes: FileNode[], name: string): string | null {
 // shared <head> snippets
 const HLJS_CSS = `<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" />`;
 const KATEX_CSS = `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />`;
+const MERMAID_JS = `<script defer src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"><\/script>
+<script>window.addEventListener('load',function(){if(window.mermaid){mermaid.initialize({startOnLoad:false,theme:document.documentElement.dataset.theme==='dark'?'dark':'default'});var d=document.querySelectorAll('.mermaid');if(d.length)mermaid.run({nodes:Array.from(d)});}});<\/script>`;
 const THEME_SCRIPT = `<script>(function(){
   var d=window.matchMedia('(prefers-color-scheme: dark)').matches;
   document.documentElement.dataset.theme=d?'dark':'light';
@@ -176,6 +182,7 @@ function buildFilePage(md: string, title: string): string {
     ${styles}
     html, body { height: auto; overflow: auto; }
   </style>
+  ${MERMAID_JS}
   ${THEME_SCRIPT}
   <script>new EventSource('/__sse').onmessage = function() { location.reload(); };</script>
 </head>
@@ -196,6 +203,7 @@ function buildDirPage(dirName: string): string {
   <title>${escHtml(dirName)}</title>
   ${HLJS_CSS}
   ${KATEX_CSS}
+  ${MERMAID_JS}
   <style>
     ${styles}
     html, body { height: 100%; overflow: hidden; }
@@ -319,7 +327,7 @@ function buildDirPage(dirName: string): string {
       return nodes.map(function(node) {
         var indent = (depth * 14 + 8) + 'px';
         if (node.children != null) {
-          return '<details open>'
+          return '<details>'
             + '<summary class="dir-label" style="padding-left:' + indent + '">' + esc(node.name) + '</summary>'
             + '<div>' + renderTree(node.children, depth + 1) + '</div>'
             + '</details>';
@@ -336,8 +344,9 @@ function buildDirPage(dirName: string): string {
       });
     }
 
-    // intercept clicks on wikilinks rendered as /__find?name=... hrefs
-    function attachWikilinkHandlers() {
+    // intercept clicks on internal links: [[wikilinks]] and relative .md hrefs
+    function attachLinkHandlers() {
+      // wikilinks rendered as /__find?name=...
       prose.querySelectorAll('a[href^="/__find"]').forEach(function(a) {
         a.addEventListener('click', function(e) {
           e.preventDefault();
@@ -345,6 +354,18 @@ function buildDirPage(dirName: string): string {
             .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); })
             .then(function(d) { moveFocus(null); loadFile(d.path); })
             .catch(function() { /* target file not found - do nothing */ });
+        });
+      });
+
+      // relative .md links - resolve against current file's directory
+      prose.querySelectorAll('a[href]').forEach(function(a) {
+        var href = a.getAttribute('href');
+        if (!href || href.startsWith('http') || href.startsWith('#') || !href.endsWith('.md')) return;
+        a.addEventListener('click', function(e) {
+          e.preventDefault();
+          var base = new URL('http://x/' + (currentPath || ''));
+          var resolved = new URL(href, base).pathname.slice(1);
+          if (resolved) { moveFocus(null); loadFile(resolved); }
         });
       });
     }
@@ -361,7 +382,7 @@ function buildDirPage(dirName: string): string {
         .then(function(d) {
           prose.innerHTML = d.html;
           document.title = d.title;
-          attachWikilinkHandlers();
+          attachLinkHandlers();
         })
         .catch(function(err) {
           prose.innerHTML = '<p class="empty-hint">Could not load: ' + esc(path) + '</p>';
@@ -470,6 +491,7 @@ function buildDirPage(dirName: string): string {
       if (document.activeElement === searchInput) return;
       var k = e.key;
       if (k === '/' && !searchActive) { e.preventDefault(); openSearch(); return; }
+      if (k === 'c') { e.preventDefault(); collapseBtn.click(); return; }
       if (k !== 'j' && k !== 'k' && k !== 'h' && k !== 'l' && k !== 'Enter'
           && k !== 'ArrowUp' && k !== 'ArrowDown' && k !== 'ArrowLeft' && k !== 'ArrowRight') return;
       var items = visibleItems();
@@ -502,7 +524,9 @@ function buildDirPage(dirName: string): string {
     });
 
     var collapseBtn = document.getElementById('collapse-btn');
-    var allCollapsed = false;
+    var allCollapsed = true;
+    collapseBtn.textContent = '+';
+    collapseBtn.title = 'Expand all';
     collapseBtn.addEventListener('click', function() {
       var details = document.querySelectorAll('#tree details');
       allCollapsed = !allCollapsed;
@@ -733,6 +757,21 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(buildFilePage(currentMd, basename(argPath)));
     return;
+  }
+
+  // serve linked .md files from the same directory as the main file
+  if (pathname.endsWith('.md')) {
+    const mdPath = resolve(fileDir, '.' + pathname);
+    if (mdPath.startsWith(fileDir + '/')) {
+      try {
+        const md = readFileSync(mdPath, 'utf-8');
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(buildFilePage(md, basename(mdPath, '.md')));
+      } catch {
+        res.writeHead(404); res.end();
+      }
+      return;
+    }
   }
 
   // serve local files (images etc.) from the markdown file's directory

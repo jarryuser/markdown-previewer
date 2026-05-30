@@ -141,6 +141,9 @@ npm run build     # production build -> dist/
 - [x] **Vim keybindings** - Vim button toggles modal editing with Normal / Insert / Visual modes and status bar
 - [x] **Math support** - KaTeX renders `$inline$` and `$$block$$` formulas in the preview
 - [x] **Directory mode** - `mdp ./notes/` opens a directory with a file tree sidebar; click any `.md` file to preview; live reload on save
+- [x] **Find & replace** - Find button and `Mod+F` open CodeMirror's built-in search and replace panel
+- [x] **Table of contents** - TOC button shows a sidebar panel with clickable headings that scroll the preview
+- [x] **Mermaid diagrams** - ` ```mermaid ` code blocks are rendered as diagrams via mermaid.js; theme follows light/dark mode
 - [x] **`--port` flag** - specify a fixed port: `mdp README.md --port 3000`
 - [x] **Recent files** - `mdp` with no arguments shows a numbered list of recently opened files; `mdp 2` reopens entry #2
 - [x] **Search in file tree** - press `/` to filter files by name; `↑`/`↓` to navigate results; `Enter` to open; `Escape` to close
@@ -150,9 +153,6 @@ npm run build     # production build -> dist/
 
 **Web editor**
 
-- [ ] **Find & replace** - search and replace text in the editor (`Mod+F` / `Mod+H`)
-- [ ] **Table of contents** - sidebar panel with anchors generated from headings; click to scroll the preview
-- [ ] **Mermaid diagrams** - render diagrams in ` ```mermaid ` code blocks via mermaid.js
 - [ ] **Image paste from clipboard** - paste images with `Ctrl+V`, stored the same way as drag & drop
 - [ ] **Print / PDF export** - print button with print-friendly CSS that hides the editor and keeps only the prose
 - [ ] **Custom themes** - additional color schemes beyond light and dark

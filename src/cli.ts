@@ -5,7 +5,8 @@ import { resolve, dirname, extname, basename, relative, join } from 'node:path';
 import { homedir } from 'node:os';
 import { exec } from 'node:child_process';
 import type { AddressInfo } from 'node:net';
-import { marked } from 'marked';
+import { marked, Marked } from 'marked';
+import blessed from 'blessed';
 import markedKatex from 'marked-katex-extension';
 import hljs from 'highlight.js';
 import styles from './style.css?raw';
@@ -43,6 +44,146 @@ function openBrowser(url: string): void {
     : process.platform === 'win32' ? `start "${url}"`
     : `xdg-open "${url}"`;
   exec(cmd);
+}
+
+// ── ANSI terminal renderer ────────────────────────────────────────────────────
+
+const C = {
+  r:  '\x1b[0m',  // reset
+  b:  '\x1b[1m',  // bold
+  d:  '\x1b[2m',  // dim
+  it: '\x1b[3m',  // italic
+  u:  '\x1b[4m',  // underline
+  cy: '\x1b[36m', // cyan
+  ye: '\x1b[33m', // yellow
+  gr: '\x1b[32m', // green
+  bl: '\x1b[34m', // blue
+  mg: '\x1b[35m', // magenta
+  gy: '\x1b[90m', // gray
+} as const;
+
+// ── ANSI renderer (for -t / --terminal stdout output) ────────────────────────
+
+const ansiMarked = new Marked({ gfm: true });
+ansiMarked.use({
+  renderer: {
+    heading(text: string, depth: number): string {
+      const cols = process.stdout.columns || 80;
+      if (depth === 1) {
+        const line = '═'.repeat(Math.min(cols - 2, text.length + 4));
+        return `\n${C.b}${C.mg}${line}\n  ${text}\n${line}${C.r}\n\n`;
+      }
+      if (depth === 2) {
+        const line = '─'.repeat(Math.min(cols - 2, text.length + 2));
+        return `\n${C.b}${C.cy}${text}\n${line}${C.r}\n\n`;
+      }
+      const colors = [C.gr, C.ye, C.b, C.d];
+      const col = colors[Math.min(depth - 3, colors.length - 1)];
+      return `\n${C.b}${col}${'###'.slice(0, depth - 2)} ${text}${C.r}\n\n`;
+    },
+    paragraph(text: string): string { return text + '\n\n'; },
+    strong(text: string): string    { return `${C.b}${text}${C.r}`; },
+    em(text: string): string        { return `${C.it}${text}${C.r}`; },
+    del(text: string): string       { return `${C.d}${text}${C.r}`; },
+    codespan(code: string): string  { return `${C.cy}\`${code}\`${C.r}`; },
+    code(code: string, lang: string | undefined): string {
+      const cols = process.stdout.columns || 80;
+      const bar  = `${C.gy}${'─'.repeat(Math.min(cols - 2, 60))}${C.r}`;
+      const info = lang ? ` ${C.gy}${lang}${C.r}\n` : '';
+      const lines = code.split('\n').map(l => `${C.gy}▌${C.r} ${C.cy}${l}${C.r}`).join('\n');
+      return `\n${info}${bar}\n${lines}\n${bar}\n\n`;
+    },
+    blockquote(quote: string): string {
+      return quote.split('\n').filter(Boolean)
+        .map(l => `${C.mg}▌${C.r} ${C.d}${l}${C.r}`)
+        .join('\n') + '\n\n';
+    },
+    list(body: string, _ordered: boolean): string { return body + '\n'; },
+    listitem(text: string): string { return `  ${C.cy}•${C.r} ${text}\n`; },
+    link(href: string, _title: string | null | undefined, text: string): string {
+      const label = text || href;
+      const url   = text && text !== href ? ` ${C.gy}↗ ${href}${C.r}` : '';
+      return `${C.bl}${C.u}${label}${C.r}${url}`;
+    },
+    image(_href: string, _title: string | null | undefined, text: string): string {
+      return `${C.gy}[img: ${text || '…'}]${C.r}`;
+    },
+    hr(): string {
+      const w = process.stdout.columns || 80;
+      return `\n${C.d}${'─'.repeat(w)}${C.r}\n\n`;
+    },
+    br(): string { return '\n'; },
+    table(header: string, body: string): string {
+      return `\n${header}${C.gy}${'─'.repeat(40)}${C.r}\n${body}\n`;
+    },
+    tablerow(content: string): string  { return content.trimEnd() + '\n'; },
+    tablecell(content: string, flags: { header?: boolean }): string {
+      return (flags.header ? `${C.b}${content}${C.r}` : content) + '  ';
+    },
+    html(_text: string): string { return ''; },
+  },
+});
+
+// ── Blessed renderer (for --tui preview box, uses {tag} markup) ───────────────
+// Code content is NOT colorized to avoid escaping issues with { } in code
+
+const blessedMarked = new Marked({ gfm: true });
+blessedMarked.use({
+  renderer: {
+    heading(text: string, depth: number): string {
+      const tags  = ['{magenta-fg}{bold}', '{cyan-fg}{bold}', '{green-fg}{bold}', '{yellow-fg}{bold}', '{bold}', '{gray-fg}'];
+      const tag   = tags[Math.min(depth - 1, tags.length - 1)];
+      const under = depth <= 2 ? `\n{gray-fg}${'─'.repeat(50)}{/gray-fg}` : '';
+      return `\n${tag}${'#'.repeat(depth)} ${text}{/}${under}\n\n`;
+    },
+    paragraph(text: string): string    { return text + '\n\n'; },
+    strong(text: string): string       { return `{bold}${text}{/bold}`; },
+    em(text: string): string           { return `{underline}${text}{/underline}`; },
+    del(text: string): string          { return `{gray-fg}${text}{/gray-fg}`; },
+    codespan(code: string): string     { return `{cyan-fg}\`${code}\`{/cyan-fg}`; },
+    code(code: string, lang: string | undefined): string {
+      const info  = lang ? `{gray-fg}${lang}{/gray-fg}\n` : '';
+      const bar   = `{gray-fg}${'─'.repeat(50)}{/gray-fg}`;
+      // no tags inside code body - avoids {variable} being parsed as blessed tags
+      const lines = code.split('\n').map(l => `{gray-fg}▌{/gray-fg} ${l}`).join('\n');
+      return `\n${info}${bar}\n${lines}\n${bar}\n\n`;
+    },
+    blockquote(quote: string): string {
+      return quote.split('\n').filter(Boolean)
+        .map(l => `{magenta-fg}▌{/magenta-fg} {gray-fg}${l}{/gray-fg}`)
+        .join('\n') + '\n\n';
+    },
+    list(body: string, _ordered: boolean): string { return body + '\n'; },
+    listitem(text: string): string { return `  {cyan-fg}•{/cyan-fg} ${text}\n`; },
+    link(href: string, _title: string | null | undefined, text: string): string {
+      const label = text || href;
+      const url   = text && text !== href ? ` {gray-fg}↗ ${href}{/gray-fg}` : '';
+      return `{blue-fg}{underline}${label}{/underline}{/blue-fg}${url}`;
+    },
+    image(_href: string, _title: string | null | undefined, text: string): string {
+      return `{gray-fg}[img: ${text || '…'}]{/gray-fg}`;
+    },
+    hr(): string {
+      return `\n{gray-fg}${'─'.repeat(60)}{/gray-fg}\n\n`;
+    },
+    br(): string { return '\n'; },
+    table(header: string, body: string): string {
+      return `\n${header}{gray-fg}${'─'.repeat(40)}{/gray-fg}\n${body}\n`;
+    },
+    tablerow(content: string): string { return content.trimEnd() + '\n'; },
+    tablecell(content: string, flags: { header?: boolean }): string {
+      return (flags.header ? `{bold}${content}{/bold}` : content) + '  ';
+    },
+    html(_text: string): string { return ''; },
+  },
+});
+
+function renderAnsi(md: string): string {
+  return ansiMarked.parse(stripFrontmatter(md)) as string;
+}
+
+function renderBlessed(md: string): string {
+  return blessedMarked.parse(stripFrontmatter(md)) as string;
 }
 
 function escHtml(s: string): string {
@@ -207,14 +348,21 @@ function buildDirPage(dirName: string): string {
   <style>
     ${styles}
     html, body { height: 100%; overflow: hidden; }
-    #app { display: grid; grid-template-columns: 260px 1fr; height: 100%; }
+    #app { display: grid; grid-template-columns: 260px 4px 1fr; height: 100%; }
     #sidebar {
       display: flex;
       flex-direction: column;
-      border-right: 1px solid var(--border);
+      border-right: none;
       background: var(--bg-toolbar);
       overflow: hidden;
     }
+    #sidebar-resize {
+      background: var(--divider);
+      cursor: col-resize;
+      user-select: none;
+      transition: background .15s;
+    }
+    #sidebar-resize:hover { background: var(--accent); }
     .sidebar-header {
       display: flex;
       align-items: center;
@@ -258,7 +406,30 @@ function buildDirPage(dirName: string): string {
     }
     #search-input:focus { border-color: var(--accent); }
     #tree { padding: 4px 0 16px; overflow-y: auto; flex: 1; }
-    #content { overflow-y: auto; padding: 32px 28px; }
+    #content { display: flex; flex-direction: column; overflow: hidden; }
+    #nav-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      background: var(--bg-toolbar);
+    }
+    .nav-btn { padding: 2px 8px; font-size: 12px; }
+    #breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 12px;
+      color: var(--text-muted);
+      min-width: 0;
+      overflow: hidden;
+    }
+    .bc-sep { opacity: .5; flex-shrink: 0; }
+    .bc-part { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bc-current { color: var(--text); font-weight: 500; }
+    #content-scroll { overflow-y: auto; padding: 32px 28px; flex: 1; min-height: 0; }
     .empty-hint { color: var(--text-muted); font-size: 14px; }
     details > summary { list-style: none; }
     details > summary::-webkit-details-marker { display: none; }
@@ -304,18 +475,63 @@ function buildDirPage(dirName: string): string {
       </div>
       <div id="tree"></div>
     </aside>
+    <div id="sidebar-resize"></div>
     <main id="content">
-      <div class="prose" id="prose">
-        <p class="empty-hint">Select a file from the sidebar</p>
+      <div id="nav-bar">
+        <button class="nav-btn" id="back-btn" title="Back (Alt+←)" disabled>←</button>
+        <button class="nav-btn" id="fwd-btn" title="Forward (Alt+→)" disabled>→</button>
+        <div id="breadcrumb"></div>
+      </div>
+      <div id="content-scroll">
+        <div class="prose" id="prose">
+          <p class="empty-hint">Select a file from the sidebar</p>
+        </div>
       </div>
     </main>
   </div>
   <script>
     var prose = document.getElementById('prose');
+    var contentScroll = document.getElementById('content-scroll');
     var currentPath = location.hash.slice(1) || null;
     var searchBar = document.getElementById('search-bar');
     var searchInput = document.getElementById('search-input');
     var searchActive = false;
+
+    // back / forward history
+    var navHistory = [];
+    var navIdx = -1;
+    var backBtn = document.getElementById('back-btn');
+    var fwdBtn = document.getElementById('fwd-btn');
+
+    function updateNavBtns() {
+      backBtn.disabled = navIdx <= 0;
+      fwdBtn.disabled = navIdx >= navHistory.length - 1;
+    }
+
+    function pushNav(path) {
+      if (navHistory[navIdx] === path) return;
+      navHistory = navHistory.slice(0, navIdx + 1);
+      navHistory.push(path);
+      navIdx = navHistory.length - 1;
+      updateNavBtns();
+    }
+
+    backBtn.addEventListener('click', function() {
+      if (navIdx > 0) { navIdx--; loadFile(navHistory[navIdx], false); updateNavBtns(); }
+    });
+    fwdBtn.addEventListener('click', function() {
+      if (navIdx < navHistory.length - 1) { navIdx++; loadFile(navHistory[navIdx], false); updateNavBtns(); }
+    });
+
+    function updateBreadcrumb(path) {
+      var parts = path.split('/');
+      document.getElementById('breadcrumb').innerHTML = parts.map(function(part, i) {
+        var isLast = i === parts.length - 1;
+        var label = isLast ? part.replace(/\\.md$/, '') : part;
+        return (i > 0 ? '<span class="bc-sep">›</span>' : '')
+          + '<span class="bc-part' + (isLast ? ' bc-current' : '') + '">' + esc(label) + '</span>';
+      }).join('');
+    }
 
     function esc(s) {
       return String(s)
@@ -370,10 +586,14 @@ function buildDirPage(dirName: string): string {
       });
     }
 
-    function loadFile(path) {
+    function loadFile(path, push) {
+      push = push !== false;
       currentPath = path;
       location.hash = path;
       setActive(path);
+      if (push) pushNav(path);
+      updateBreadcrumb(path);
+      contentScroll.scrollTop = 0;
       fetch('/__file?p=' + encodeURIComponent(path))
         .then(function(r) {
           if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -486,10 +706,12 @@ function buildDirPage(dirName: string): string {
       }
     });
 
-    // main keyboard handler - j/k/h/l navigation + / for search
+    // main keyboard handler - j/k/h/l navigation + / for search + Alt+← Alt+→ for back/fwd
     document.addEventListener('keydown', function(e) {
       if (document.activeElement === searchInput) return;
       var k = e.key;
+      if (k === 'ArrowLeft' && e.altKey) { e.preventDefault(); backBtn.click(); return; }
+      if (k === 'ArrowRight' && e.altKey) { e.preventDefault(); fwdBtn.click(); return; }
       if (k === '/' && !searchActive) { e.preventDefault(); openSearch(); return; }
       if (k === 'c') { e.preventDefault(); collapseBtn.click(); return; }
       if (k !== 'j' && k !== 'k' && k !== 'h' && k !== 'l' && k !== 'Enter'
@@ -549,21 +771,35 @@ function buildDirPage(dirName: string): string {
         if (target) loadFile(target);
       });
 
+    // sidebar resize
+    var sidebarResize = document.getElementById('sidebar-resize');
+    var appEl = document.getElementById('app');
+    var resizingBar = false;
+    sidebarResize.addEventListener('mousedown', function() { resizingBar = true; });
+    window.addEventListener('mousemove', function(e) {
+      if (!resizingBar) return;
+      var rect = appEl.getBoundingClientRect();
+      var w = Math.min(Math.max(e.clientX - rect.left, 160), 500);
+      appEl.style.gridTemplateColumns = w + 'px 4px 1fr';
+    });
+    window.addEventListener('mouseup', function() { resizingBar = false; });
+
     var es = new EventSource('/__sse');
     es.onmessage = function(e) {
       var msg = JSON.parse(e.data);
-      if (msg.type === 'change' && msg.path === currentPath) loadFile(currentPath);
+      if (msg.type === 'change' && msg.path === currentPath) loadFile(currentPath, false);
     };
   </script>
 </body>
 </html>`;
 }
 
-// auto-shutdown when all browser tabs close
+// auto-shutdown when all browser tabs close (disabled in TUI/terminal modes)
 const sseClients = new Set<ServerResponse>();
 let shutdownTimer: ReturnType<typeof setTimeout> | null = null;
 
 function scheduleShutdown(): void {
+  if (isTui || isTerminal) return;
   if (shutdownTimer) return;
   shutdownTimer = setTimeout(() => {
     console.log('\nBrowser closed - stopping server');
@@ -577,7 +813,10 @@ function cancelShutdown(): void {
   shutdownTimer = null;
 }
 
-// argument parsing - supports --port N flag
+// callback invoked when a watched file changes (used by TUI to refresh preview)
+let tuiFileChanged: ((changedPath: string) => void) | null = null;
+
+// argument parsing
 const args = process.argv.slice(2);
 let portArg: number | undefined;
 const pathArgs: string[] = [];
@@ -589,10 +828,15 @@ for (let i = 0; i < args.length; i++) {
       process.exit(1);
     }
     i++;
+  } else if (args[i] === '--tui' || args[i] === '-t' || args[i] === '--terminal') {
+    // handled below
   } else {
     pathArgs.push(args[i]);
   }
 }
+
+const isTui = args.includes('--tui');
+const isTerminal = args.includes('-t') || args.includes('--terminal');
 
 // no path given - show recent files list
 if (pathArgs.length === 0) {
@@ -647,6 +891,7 @@ if (!isDir) {
     try {
       currentMd = readFileSync(argPath, 'utf-8');
       for (const client of sseClients) client.write('data: reload\n\n');
+      tuiFileChanged?.('');
     } catch { /* ignore transient read errors mid-save */ }
   });
 }
@@ -660,6 +905,7 @@ if (isDir) {
       for (const client of sseClients) {
         client.write(`data: ${JSON.stringify({ type: 'change', path: changedPath })}\n\n`);
       }
+      tuiFileChanged?.(changedPath);
     });
   } catch {
     console.warn('Warning: directory watching unavailable on this platform');
@@ -782,7 +1028,300 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
   res.writeHead(404); res.end();
 });
 
-server.listen(portArg ?? 0, '127.0.0.1', () => {
+// ── TUI ───────────────────────────────────────────────────────────────────────
+
+interface TuiItem {
+  label: string;
+  path?: string;
+  isDir: boolean;
+  depth: number;
+  expanded: boolean;
+  node: FileNode;
+}
+
+let tuiItems: TuiItem[] = [];
+let tuiCurrentPath = '';
+
+function buildTuiItems(nodes: FileNode[], depth: number): TuiItem[] {
+  const result: TuiItem[] = [];
+  for (const node of nodes) {
+    if (node.children !== undefined) {
+      result.push({ label: '  '.repeat(depth) + '▸ ' + node.name, isDir: true, depth, expanded: false, node });
+    } else if (node.path) {
+      result.push({ label: '  '.repeat(depth) + node.name.replace(/\.md$/, ''), path: node.path, isDir: false, depth, expanded: false, node });
+    }
+  }
+  return result;
+}
+
+function tuiToggle(idx: number, list: blessed.Widgets.ListElement, screen: blessed.Widgets.Screen): void {
+  const item = tuiItems[idx];
+  if (!item.isDir || !item.node.children) return;
+  if (item.expanded) {
+    item.expanded = false;
+    item.label = '  '.repeat(item.depth) + '▸ ' + item.node.name;
+    let end = idx + 1;
+    while (end < tuiItems.length && tuiItems[end].depth > item.depth) end++;
+    tuiItems.splice(idx + 1, end - idx - 1);
+  } else {
+    item.expanded = true;
+    item.label = '  '.repeat(item.depth) + '▾ ' + item.node.name;
+    tuiItems.splice(idx + 1, 0, ...buildTuiItems(item.node.children, item.depth + 1));
+  }
+  (list as any).setItems(tuiItems.map(i => i.label));
+  (list as any).select(idx);
+  screen.render();
+}
+
+// blessed prints tput capability parse errors to stderr on startup; suppress them
+function createScreen(title: string): blessed.Widgets.Screen {
+  const orig = (process.stderr as any).write;
+  (process.stderr as any).write = () => true;
+  const screen = blessed.screen({ smartCSR: true, title, fullUnicode: true }) as blessed.Widgets.Screen;
+  (process.stderr as any).write = orig;
+  return screen;
+}
+
+function runTui(previewUrl: string): void {
+  const screen = createScreen(basename(argPath));
+
+  const previewBox = blessed.box({
+    left: isDir ? '30%' : 0,
+    top: 0,
+    right: 0,
+    height: '100%-1',
+    border: { type: 'line' },
+    label: ` ${basename(argPath)} `,
+    scrollable: true,
+    alwaysScroll: true,
+    keys: true,
+    mouse: true,
+    tags: true,
+    padding: { left: 2, right: 2, top: 0, bottom: 1 },
+    style: { border: { fg: 'gray' as any }, focus: { border: { fg: 'cyan' as any } } },
+  } as any);
+
+  const hintDir  = ' [Tab/Esc] switch  [j/k] nav  [l/Enter] open  [h] close dir  [/] search  [b] browser  [q] quit';
+  const hintFile = ' [j/k] scroll  [b] open in browser  [q] quit';
+
+  const statusBar = blessed.box({
+    bottom: 0, height: 1, left: 0, right: 0, tags: false,
+    content: isDir ? hintDir : hintFile,
+    style: { bg: 'blue', fg: 'white' },
+  });
+
+  screen.append(previewBox);
+  screen.append(statusBar);
+
+  function loadPreview(filePath: string, keepScroll = false): void {
+    tuiCurrentPath = filePath;
+    const fullPath = isDir ? resolve(argPath, filePath) : filePath;
+    const pos = keepScroll ? ((previewBox as any).childBase ?? 0) : 0;
+    try {
+      const md = readFileSync(fullPath, 'utf-8');
+      previewBox.setContent(renderBlessed(md));
+    } catch {
+      previewBox.setContent(`{red-fg}Could not load: ${filePath}{/red-fg}`);
+    }
+    previewBox.setLabel(` ${basename(filePath)} `);
+    (previewBox as any).scrollTo(pos);
+    screen.render();
+  }
+
+  tuiFileChanged = (changedPath: string) => {
+    if (!isDir) loadPreview(argPath, true);
+    else if (changedPath === tuiCurrentPath) loadPreview(tuiCurrentPath, true);
+  };
+
+  if (!isDir) {
+    // file mode - all keys on screen level
+    screen.key(['j', 'down'], () => { (previewBox as any).scroll(3);  screen.render(); });
+    screen.key(['k', 'up'],   () => { (previewBox as any).scroll(-3); screen.render(); });
+    screen.key(['q', 'C-c'],  () => process.exit(0));
+    screen.key('b',           () => openBrowser(previewUrl));
+    loadPreview(argPath);
+    previewBox.focus();
+    screen.render();
+    return;
+  }
+
+  // directory mode: tree list on the left
+  const treeList = blessed.list({
+    left: 0, top: 0, width: '30%', height: '100%-1',
+    border: { type: 'line' },
+    label: ` ${basename(argPath)} `,
+    scrollable: true,
+    keys: false, // we handle all keys at screen level
+    mouse: true,
+    style: {
+      item: {},
+      selected: { bg: 'blue', fg: 'white', bold: true },
+      border: { fg: 'gray' as any },
+      focus: { border: { fg: 'cyan' as any } },
+    },
+  } as any) as blessed.Widgets.ListElement;
+
+  screen.append(treeList);
+
+  tuiItems = buildTuiItems(buildTree(argPath, argPath), 0);
+  (treeList as any).setItems(tuiItems.map(i => i.label));
+
+  const first = tuiItems.find(i => !i.isDir && i.path);
+  if (first?.path) loadPreview(first.path);
+
+  // mouse click on file opens it
+  treeList.on('select', (_: unknown, idx: number) => {
+    const item = tuiItems[idx];
+    if (!item) return;
+    if (item.isDir) tuiToggle(idx, treeList, screen);
+    else if (item.path) { loadPreview(item.path); previewBox.focus(); }
+  });
+
+  // track which pane is active
+  let inTree = true;
+  treeList.on('focus',   () => { inTree = true; });
+  previewBox.on('focus', () => { inTree = false; });
+
+  // search prompt
+  const prompt = (blessed as any).prompt({
+    parent: screen, top: 'center', left: 'center',
+    width: '50%', height: 'shrink',
+    border: 'line', label: ' Search ', tags: false,
+    style: { border: { fg: 'cyan' } },
+  });
+
+  // all keyboard handling at screen level - fires regardless of which widget has focus
+  screen.key(['q', 'C-c'], () => process.exit(0));
+  screen.key('b',          () => openBrowser(previewUrl));
+
+  screen.key('tab', () => {
+    if (inTree) previewBox.focus(); else treeList.focus();
+    screen.render();
+  });
+  screen.key('escape', () => {
+    if (!inTree) { treeList.focus(); screen.render(); }
+  });
+
+  screen.key(['j', 'down'], () => {
+    if (inTree) {
+      const cur = (treeList as any).selected as number;
+      (treeList as any).select(Math.min(cur + 1, tuiItems.length - 1));
+    } else {
+      (previewBox as any).scroll(3);
+    }
+    screen.render();
+  });
+  screen.key(['k', 'up'], () => {
+    if (inTree) {
+      const cur = (treeList as any).selected as number;
+      (treeList as any).select(Math.max(cur - 1, 0));
+    } else {
+      (previewBox as any).scroll(-3);
+    }
+    screen.render();
+  });
+
+  screen.key(['l', 'enter'], () => {
+    if (!inTree) return;
+    const idx = (treeList as any).selected as number;
+    const item = tuiItems[idx];
+    if (!item) return;
+    if (item.isDir) tuiToggle(idx, treeList, screen);
+    else if (item.path) { loadPreview(item.path); previewBox.focus(); }
+  });
+
+  screen.key('h', () => {
+    if (!inTree) return;
+    const idx = (treeList as any).selected as number;
+    const item = tuiItems[idx];
+    if (!item) return;
+    if (item.isDir && item.expanded) { tuiToggle(idx, treeList, screen); return; }
+    for (let i = idx - 1; i >= 0; i--) {
+      if (tuiItems[i].isDir && tuiItems[i].depth < item.depth) {
+        (treeList as any).select(i);
+        screen.render();
+        break;
+      }
+    }
+  });
+
+  screen.key('/', () => {
+    if (!inTree) return;
+    prompt.input('Filter files:', '', (err: unknown, value: string) => {
+      if (!err && value) {
+        const q = value.toLowerCase();
+        const match = tuiItems.findIndex(i => !i.isDir && i.label.toLowerCase().includes(q));
+        if (match >= 0) {
+          (treeList as any).select(match);
+          if (tuiItems[match].path) loadPreview(tuiItems[match].path!);
+        }
+      }
+      treeList.focus();
+      screen.render();
+    });
+  });
+
+  treeList.focus();
+  screen.render();
+}
+
+// ── entry point ───────────────────────────────────────────────────────────────
+
+// terminal pager mode (-t / --terminal): blessed pager on TTY, raw ANSI when piped
+if (isTerminal) {
+  if (isDir) {
+    console.error('Error: -t mode requires a file.\nUsage: mdp <file.md> -t');
+    process.exit(1);
+  }
+
+  if (!process.stdout.isTTY) {
+    process.stdout.write(renderAnsi(currentMd));
+    process.exit(0);
+  }
+
+  const screen = createScreen(basename(argPath));
+
+  const pager = blessed.box({
+    top: 0, left: 0, right: 0,
+    height: '100%-1',
+    scrollable: true,
+    alwaysScroll: true,
+    keys: true,
+    mouse: true,
+    tags: true,
+    padding: { left: 3, right: 3, top: 1, bottom: 1 },
+    content: renderBlessed(currentMd),
+  } as any);
+
+  const hint = blessed.box({
+    bottom: 0, height: 1, left: 0, right: 0, tags: false,
+    content: ` ${basename(argPath)}   [j/k ↑↓] scroll  [g/G] top/bottom  [q] close`,
+    style: { bg: 'blue', fg: 'white' },
+  });
+
+  screen.append(pager);
+  screen.append(hint);
+
+  screen.key(['j', 'down'],     () => { (pager as any).scroll(3);  screen.render(); });
+  screen.key(['k', 'up'],       () => { (pager as any).scroll(-3); screen.render(); });
+  screen.key(['g', 'home'],     () => { (pager as any).scrollTo(0); screen.render(); });
+  screen.key(['S-g', 'end'],    () => { (pager as any).scrollTo((pager as any).getScrollHeight()); screen.render(); });
+  screen.key(['pagedown', 'f'], () => { (pager as any).scroll(Math.floor((screen.height as number) * 0.8)); screen.render(); });
+  screen.key(['pageup', 'b'],   () => { (pager as any).scroll(-Math.floor((screen.height as number) * 0.8)); screen.render(); });
+  screen.key(['q', 'C-c'],      () => process.exit(0));
+
+  tuiFileChanged = () => {
+    const pos = (pager as any).childBase ?? 0;
+    pager.setContent(renderBlessed(currentMd));
+    (pager as any).scrollTo(pos);
+    screen.render();
+  };
+
+  pager.focus();
+  screen.render();
+}
+
+if (!isTerminal) server.listen(portArg ?? 0, '127.0.0.1', () => {
   const { port } = server.address() as AddressInfo;
   const previewUrl = `http://localhost:${port}`;
   if (isDir) {
@@ -791,5 +1330,9 @@ server.listen(portArg ?? 0, '127.0.0.1', () => {
     console.log(`File:      ${argPath}`);
   }
   console.log(`Preview:   ${previewUrl}`);
-  openBrowser(previewUrl);
+  if (isTui) {
+    runTui(previewUrl);
+  } else {
+    openBrowser(previewUrl);
+  }
 });

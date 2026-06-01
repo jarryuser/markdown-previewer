@@ -11,7 +11,7 @@ export default defineConfig({
     emptyOutDir: false,
     target: 'node18',
     rollupOptions: {
-      external: [/^node:/],
+      external: [/^node:/, 'blessed'],
       output: {
         banner: '#!/usr/bin/env node',
       },

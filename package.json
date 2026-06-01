@@ -15,6 +15,7 @@
     "@codemirror/lang-markdown": "^6.5.0",
     "@codemirror/theme-one-dark": "^6.1.3",
     "@replit/codemirror-vim": "^6.3.0",
+    "blessed": "^0.1.81",
     "codemirror": "^6.0.2",
     "highlight.js": "^11.9.0",
     "katex": "^0.17.0",
@@ -22,6 +23,7 @@
     "marked-katex-extension": "^5.1.9"
   },
   "devDependencies": {
+    "@types/blessed": "^0.1.27",
     "@types/node": "^25.9.1",
     "gh-pages": "^6.1.1",
     "typescript": "^5.3.3",

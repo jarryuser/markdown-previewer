@@ -27,6 +27,10 @@
       <button id="copy-btn">Copy MD</button>
       <button id="export-btn">Export</button>
       <button id="clear-btn">Clear</button>
+      <button id="open-file-btn" title="Open local .md file">Open File</button>
+      <button id="open-dir-btn" title="Open local directory">Open Dir</button>
+      <button id="save-file-btn" title="Save file (Mod+S)" style="display:none">Save</button>
+      <span id="open-file-name" class="stat" style="display:none"></span>
       <button id="find-btn" title="Find / Replace (Mod+F)">Find</button>
       <button id="font-dec-btn" title="Decrease font size">A−</button>
       <button id="font-inc-btn" title="Increase font size">A+</button>
@@ -48,6 +52,32 @@
       <div id="preview" class="prose" aria-label="Preview"></div>
       <div id="toc" aria-label="Table of contents"></div>
     </div>
+  </div>
+
+  <!-- File System Access: directory overlay -->
+  <div id="fsa-overlay" aria-label="Directory viewer">
+    <aside id="fsa-sidebar">
+      <div class="sidebar-header">
+        <span id="fsa-dir-name" class="sidebar-title"></span>
+        <button id="fsa-collapse-btn" class="collapse-btn" title="Collapse all">−</button>
+        <button id="fsa-close-btn" class="collapse-btn" title="Close folder">✕</button>
+      </div>
+      <div id="fsa-search-bar">
+        <input id="fsa-search-input" type="text" placeholder="Filter files..." autocomplete="off" spellcheck="false" />
+      </div>
+      <div id="fsa-tree"></div>
+    </aside>
+    <div id="fsa-sidebar-resize"></div>
+    <main id="fsa-content">
+      <div id="fsa-nav">
+        <button id="fsa-back-btn" class="nav-btn" disabled>←</button>
+        <button id="fsa-fwd-btn" class="nav-btn" disabled>→</button>
+        <div id="fsa-breadcrumb" class="fsa-breadcrumb"></div>
+      </div>
+      <div id="fsa-scroll">
+        <div class="prose" id="fsa-prose"><p style="color:var(--text-muted)">Select a file from the sidebar</p></div>
+      </div>
+    </main>
   </div>
 
   <script type="module" src="/src/main.ts"></script>

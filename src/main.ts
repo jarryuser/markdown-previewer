@@ -10,6 +10,14 @@ import { vim } from '@replit/codemirror-vim';
 import { openSearchPanel } from '@codemirror/search';
 import styles from './style.css?raw';
 
+// strips YAML/TOML frontmatter from Obsidian files before rendering
+function stripFrontmatter(content: string): string {
+  const fence = content.startsWith('---') ? '---' : content.startsWith('+++') ? '+++' : null;
+  if (!fence) return content;
+  const end = content.indexOf('\n' + fence, fence.length);
+  return end === -1 ? content : content.slice(end + fence.length + 1).trimStart();
+}
+
 // mermaid is loaded from CDN (defer) - access via window to avoid TS errors
 function getMermaid() {
   return (window as unknown as { mermaid?: { initialize(c: Record<string, unknown>): void; run(o?: { nodes?: Element[] }): void } }).mermaid;
@@ -459,3 +467,433 @@ window.addEventListener('load', () => {
   getMermaid()?.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default' });
 });
 render(localStorage.getItem(STORAGE_KEY) ?? INITIAL);
+
+// ── File System Access API ────────────────────────────────────────────────────
+
+const openFileBtn = document.getElementById('open-file-btn') as HTMLButtonElement;
+const openDirBtn = document.getElementById('open-dir-btn') as HTMLButtonElement;
+const saveFileBtn = document.getElementById('save-file-btn') as HTMLButtonElement;
+const openFileNameEl = document.getElementById('open-file-name') as HTMLElement;
+
+// -- Open File -----------------------------------------------------------------
+
+let fsaFileHandle: FileSystemFileHandle | null = null;
+let fsaFileTimer = 0;
+
+function openLocalFileFallback(): void {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.md,.markdown';
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    const content = await file.text();
+    editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: content } });
+    localStorage.setItem(STORAGE_KEY, content);
+    openFileNameEl.textContent = file.name;
+    openFileNameEl.style.display = '';
+    // can't save back without FSA handle
+    saveFileBtn.style.display = 'none';
+    clearInterval(fsaFileTimer);
+    fsaFileHandle = null;
+  };
+  input.click();
+}
+
+async function openLocalFile(): Promise<void> {
+  if (!('showOpenFilePicker' in window)) {
+    openLocalFileFallback();
+    return;
+  }
+  try {
+    const [handle] = await (window as any).showOpenFilePicker({
+      types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown'] } }],
+    }) as FileSystemFileHandle[];
+    fsaFileHandle = handle;
+    const file = await handle.getFile();
+    const content = await file.text();
+    editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: content } });
+    localStorage.setItem(STORAGE_KEY, content);
+    openFileNameEl.textContent = file.name;
+    openFileNameEl.style.display = '';
+    saveFileBtn.style.display = '';
+    startFsaFilePolling(handle, file.lastModified);
+  } catch { /* user cancelled */ }
+}
+
+function startFsaFilePolling(handle: FileSystemFileHandle, initMod: number): void {
+  clearInterval(fsaFileTimer);
+  let last = initMod;
+  fsaFileTimer = window.setInterval(async () => {
+    try {
+      const file = await handle.getFile();
+      if (file.lastModified !== last) {
+        last = file.lastModified;
+        const content = await file.text();
+        if (content !== editorView.state.doc.toString()) {
+          editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: content } });
+        }
+      }
+    } catch { clearInterval(fsaFileTimer); }
+  }, 1500);
+}
+
+async function saveLocalFile(): Promise<void> {
+  if (!fsaFileHandle) return;
+  const content = editorView.state.doc.toString();
+  try {
+    const writable = await (fsaFileHandle as any).createWritable();
+    await writable.write(content);
+    await writable.close();
+    saveFileBtn.textContent = 'Saved ✓';
+    setTimeout(() => { saveFileBtn.textContent = 'Save'; }, 1500);
+  } catch {
+    // Safari doesn't support createWritable - fall back to download
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = openFileNameEl.textContent || 'document.md';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+}
+
+openFileBtn.addEventListener('click', openLocalFile);
+saveFileBtn.addEventListener('click', saveLocalFile);
+
+// Mod+S saves the open file
+document.addEventListener('keydown', (e: KeyboardEvent) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 's' && fsaFileHandle) {
+    e.preventDefault();
+    saveLocalFile();
+  }
+});
+
+// -- Open Dir -----------------------------------------------------------------
+
+interface FsaNode {
+  name: string;
+  path: string;
+  handle?: FileSystemFileHandle;
+  file?: File; // fallback when FSA directory picker isn't available
+  children?: FsaNode[];
+}
+
+let fsaCurrentPath = '';
+let fsaCurrentHandle: FileSystemFileHandle | null = null;
+let fsaPollingTimer = 0;
+let fsaNavHistory: string[] = [];
+let fsaNavIdx = -1;
+let fsaAllCollapsed = false;
+let fsaSearchActive = false;
+const fsaTree: FsaNode[] = [];
+
+const fsaOverlay = document.getElementById('fsa-overlay') as HTMLElement;
+const fsaDirName = document.getElementById('fsa-dir-name') as HTMLElement;
+const fsaTreeEl = document.getElementById('fsa-tree') as HTMLElement;
+const fsaProse = document.getElementById('fsa-prose') as HTMLElement;
+const fsaScroll = document.getElementById('fsa-scroll') as HTMLElement;
+const fsaCloseBtn = document.getElementById('fsa-close-btn') as HTMLButtonElement;
+const fsaCollapseBtn = document.getElementById('fsa-collapse-btn') as HTMLButtonElement;
+const fsaBackBtn = document.getElementById('fsa-back-btn') as HTMLButtonElement;
+const fsaFwdBtn = document.getElementById('fsa-fwd-btn') as HTMLButtonElement;
+const fsaBreadcrumb = document.getElementById('fsa-breadcrumb') as HTMLElement;
+const fsaSearchBar = document.getElementById('fsa-search-bar') as HTMLElement;
+const fsaSearchInput = document.getElementById('fsa-search-input') as HTMLInputElement;
+const fsaSidebarResize = document.getElementById('fsa-sidebar-resize') as HTMLElement;
+const fsaOverlayEl = document.getElementById('fsa-overlay') as HTMLElement;
+
+async function buildFsaTree(dirHandle: FileSystemDirectoryHandle, base: string): Promise<FsaNode[]> {
+  const dirs: FsaNode[] = [];
+  const files: FsaNode[] = [];
+  for await (const [name, handle] of (dirHandle as any).entries()) {
+    if (name.startsWith('.')) continue;
+    if (handle.kind === 'directory') {
+      const children = await buildFsaTree(handle as FileSystemDirectoryHandle, base + name + '/');
+      if (children.length) dirs.push({ name, path: base + name + '/', children });
+    } else if (name.endsWith('.md') || name.endsWith('.markdown')) {
+      files.push({ name, path: base + name, handle: handle as FileSystemFileHandle });
+    }
+  }
+  dirs.sort((a, b) => a.name.localeCompare(b.name));
+  files.sort((a, b) => a.name.localeCompare(b.name));
+  return [...dirs, ...files];
+}
+
+function renderFsaTree(nodes: FsaNode[], depth: number): string {
+  return nodes.map(node => {
+    const indent = (depth * 14 + 8) + 'px';
+    if (node.children) {
+      return `<details><summary class="dir-label" style="padding-left:${indent}">${escHtmlInline(node.name)}</summary>`
+        + `<div>${renderFsaTree(node.children, depth + 1)}</div></details>`;
+    }
+    const label = node.name.replace(/\.(md|markdown)$/, '');
+    return `<div class="file-item" data-path="${escHtmlInline(node.path)}" style="padding-left:${indent}">${escHtmlInline(label)}</div>`;
+  }).join('');
+}
+
+function escHtmlInline(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function findFsaNode(nodes: FsaNode[], path: string): FsaNode | null {
+  for (const node of nodes) {
+    if (node.path === path && (node.handle || node.file)) return node;
+    if (node.children) {
+      const found = findFsaNode(node.children, path);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function fsaSetActive(path: string): void {
+  fsaTreeEl.querySelectorAll('.file-item').forEach(el => {
+    (el as HTMLElement).classList.toggle('active', (el as HTMLElement).dataset['path'] === path);
+  });
+}
+
+function fsaUpdateNavBtns(): void {
+  fsaBackBtn.disabled = fsaNavIdx <= 0;
+  fsaFwdBtn.disabled = fsaNavIdx >= fsaNavHistory.length - 1;
+}
+
+function fsaPushNav(path: string): void {
+  if (fsaNavHistory[fsaNavIdx] === path) return;
+  fsaNavHistory = fsaNavHistory.slice(0, fsaNavIdx + 1);
+  fsaNavHistory.push(path);
+  fsaNavIdx = fsaNavHistory.length - 1;
+  fsaUpdateNavBtns();
+}
+
+function fsaUpdateBreadcrumb(path: string): void {
+  const parts = path.split('/').filter(Boolean);
+  fsaBreadcrumb.innerHTML = parts.map((part, i) => {
+    const isLast = i === parts.length - 1;
+    const label = isLast ? part.replace(/\.(md|markdown)$/, '') : part;
+    return (i > 0 ? '<span class="bc-sep">›</span>' : '')
+      + `<span class="bc-part${isLast ? ' bc-current' : ''}">${escHtmlInline(label)}</span>`;
+  }).join('');
+}
+
+async function fsaLoadFile(path: string, push = true): Promise<void> {
+  const node = findFsaNode(fsaTree, path);
+  if (!node) return;
+  fsaCurrentPath = path;
+  fsaSetActive(path);
+  if (push) fsaPushNav(path);
+  fsaUpdateBreadcrumb(path);
+  fsaScroll.scrollTop = 0;
+  try {
+    let content: string;
+    if (node.handle) {
+      fsaCurrentHandle = node.handle;
+      const file = await node.handle.getFile();
+      content = await file.text();
+      fsaStartPolling(node.handle, file.lastModified);
+    } else if (node.file) {
+      fsaCurrentHandle = null;
+      content = await node.file.text();
+      clearInterval(fsaPollingTimer);
+    } else {
+      return;
+    }
+    const html = marked.parse(stripFrontmatter(content)) as string;
+    fsaProse.innerHTML = html;
+    document.title = path.split('/').pop()?.replace(/\.(md|markdown)$/, '') ?? 'Directory';
+    const diagrams = Array.from(fsaProse.querySelectorAll('.mermaid'));
+    if (diagrams.length) getMermaid()?.run({ nodes: diagrams });
+  } catch {
+    fsaProse.innerHTML = '<p style="color:var(--text-muted)">Could not load file</p>';
+  }
+}
+
+function fsaStartPolling(handle: FileSystemFileHandle, initMod: number): void {
+  clearInterval(fsaPollingTimer);
+  let last = initMod;
+  fsaPollingTimer = window.setInterval(async () => {
+    if (handle !== fsaCurrentHandle) { clearInterval(fsaPollingTimer); return; }
+    try {
+      const file = await handle.getFile();
+      if (file.lastModified !== last) {
+        last = file.lastModified;
+        await fsaLoadFile(fsaCurrentPath, false);
+      }
+    } catch { clearInterval(fsaPollingTimer); }
+  }, 1500);
+}
+
+function fsaFilterTree(q: string): void {
+  const lower = q.toLowerCase();
+  fsaTreeEl.querySelectorAll<HTMLElement>('.file-item').forEach(el => {
+    el.style.display = !lower || (el.textContent ?? '').toLowerCase().includes(lower) ? '' : 'none';
+  });
+  fsaTreeEl.querySelectorAll<HTMLElement>('details').forEach(det => {
+    const hasVisible = Array.from(det.querySelectorAll<HTMLElement>('.file-item')).some(el => el.style.display !== 'none');
+    det.style.display = hasVisible ? '' : 'none';
+  });
+}
+
+function fsaOpenSearch(): void {
+  fsaSearchActive = true;
+  fsaSearchBar.style.display = '';
+  fsaSearchInput.focus();
+  fsaFilterTree('');
+}
+
+function fsaCloseSearch(): void {
+  fsaSearchActive = false;
+  fsaSearchBar.style.display = 'none';
+  fsaSearchInput.value = '';
+  fsaTreeEl.querySelectorAll<HTMLElement>('.file-item, details').forEach(el => { el.style.display = ''; });
+}
+
+function attachFsaHandlers(): void {
+  fsaTreeEl.querySelectorAll<HTMLElement>('.file-item').forEach(el => {
+    el.addEventListener('click', () => fsaLoadFile(el.dataset['path'] ?? ''));
+  });
+}
+
+function buildFsaTreeFromFileList(fileList: FileList): FsaNode[] {
+  const root: FsaNode[] = [];
+  for (const file of Array.from(fileList)) {
+    if (!file.name.match(/\.(md|markdown)$/i)) continue;
+    // webkitRelativePath is "dirname/sub/file.md" - strip root dir name
+    const parts = file.webkitRelativePath.split('/').slice(1);
+    if (parts.length === 0) continue;
+    let nodes = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      let dir = nodes.find(n => n.name === parts[i] && n.children);
+      if (!dir) {
+        dir = { name: parts[i], path: parts.slice(0, i + 1).join('/') + '/', children: [] };
+        nodes.push(dir);
+      }
+      nodes = dir.children!;
+    }
+    nodes.push({ name: parts[parts.length - 1], path: parts.join('/'), file });
+  }
+  const sortNodes = (ns: FsaNode[]) => {
+    ns.sort((a, b) => (a.children && !b.children ? -1 : !a.children && b.children ? 1 : a.name.localeCompare(b.name)));
+    ns.forEach(n => { if (n.children) sortNodes(n.children); });
+  };
+  sortNodes(root);
+  return root;
+}
+
+function openLocalDirFallback(): void {
+  const input = document.createElement('input');
+  input.type = 'file';
+  (input as any).webkitdirectory = true;
+  input.multiple = true;
+  input.onchange = () => {
+    const files = input.files;
+    if (!files || files.length === 0) return;
+    const dirName = files[0].webkitRelativePath.split('/')[0];
+    const nodes = buildFsaTreeFromFileList(files);
+    fsaTree.length = 0;
+    fsaTree.push(...nodes);
+    fsaDirName.textContent = dirName;
+    fsaNavHistory = [];
+    fsaNavIdx = -1;
+    fsaUpdateNavBtns();
+    fsaOverlay.classList.add('active');
+    fsaTreeEl.innerHTML = renderFsaTree(nodes, 0);
+    attachFsaHandlers();
+    const first = findFirstFsaFile(nodes);
+    if (first) fsaLoadFile(first);
+  };
+  input.click();
+}
+
+async function openLocalDir(): Promise<void> {
+  if (!('showDirectoryPicker' in window)) {
+    openLocalDirFallback();
+    return;
+  }
+  try {
+    const handle = await (window as any).showDirectoryPicker() as FileSystemDirectoryHandle;
+    fsaNavHistory = [];
+    fsaNavIdx = -1;
+    fsaUpdateNavBtns();
+    fsaDirName.textContent = handle.name;
+    fsaTreeEl.innerHTML = '<p style="color:var(--text-muted);padding:12px;font-size:13px">Loading...</p>';
+    fsaOverlay.classList.add('active');
+
+    const nodes = await buildFsaTree(handle, '');
+    fsaTree.length = 0;
+    fsaTree.push(...nodes);
+
+    fsaTreeEl.innerHTML = renderFsaTree(nodes, 0);
+    attachFsaHandlers();
+
+    const first = findFirstFsaFile(nodes);
+    if (first) fsaLoadFile(first);
+  } catch { /* user cancelled */ }
+}
+
+function findFirstFsaFile(nodes: FsaNode[]): string | null {
+  for (const node of nodes) {
+    if (node.handle || node.file) return node.path;
+    if (node.children) {
+      const found = findFirstFsaFile(node.children);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+openDirBtn.addEventListener('click', openLocalDir);
+
+fsaCloseBtn.addEventListener('click', () => {
+  fsaOverlay.classList.remove('active');
+  clearInterval(fsaPollingTimer);
+  fsaCurrentHandle = null;
+  fsaCurrentPath = '';
+  document.title = 'Markdown Previewer';
+});
+
+fsaCollapseBtn.addEventListener('click', () => {
+  fsaAllCollapsed = !fsaAllCollapsed;
+  fsaTreeEl.querySelectorAll('details').forEach((d: Element) => { (d as HTMLDetailsElement).open = !fsaAllCollapsed; });
+  fsaCollapseBtn.textContent = fsaAllCollapsed ? '+' : '−';
+  fsaCollapseBtn.title = fsaAllCollapsed ? 'Expand all' : 'Collapse all';
+});
+
+fsaBackBtn.addEventListener('click', () => {
+  if (fsaNavIdx > 0) { fsaNavIdx--; fsaLoadFile(fsaNavHistory[fsaNavIdx], false); fsaUpdateNavBtns(); }
+});
+fsaFwdBtn.addEventListener('click', () => {
+  if (fsaNavIdx < fsaNavHistory.length - 1) { fsaNavIdx++; fsaLoadFile(fsaNavHistory[fsaNavIdx], false); fsaUpdateNavBtns(); }
+});
+
+// FSA overlay keyboard nav (j/k/h/l + / + Alt+← →)
+fsaOverlay.addEventListener('keydown', (e: KeyboardEvent) => {
+  if (document.activeElement === fsaSearchInput) {
+    if (e.key === 'Escape') { e.preventDefault(); fsaCloseSearch(); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      const first = fsaTreeEl.querySelector<HTMLElement>('.file-item:not([style*="none"])');
+      if (first) fsaLoadFile(first.dataset['path'] ?? '');
+    }
+    return;
+  }
+  if (e.key === 'ArrowLeft' && e.altKey) { e.preventDefault(); fsaBackBtn.click(); return; }
+  if (e.key === 'ArrowRight' && e.altKey) { e.preventDefault(); fsaFwdBtn.click(); return; }
+  if (e.key === '/' && !fsaSearchActive) { e.preventDefault(); fsaOpenSearch(); return; }
+  if (e.key === 'c') { e.preventDefault(); fsaCollapseBtn.click(); return; }
+  if (e.key === 'Escape') { e.preventDefault(); fsaCloseBtn.click(); return; }
+});
+
+fsaSearchInput.addEventListener('input', () => fsaFilterTree(fsaSearchInput.value));
+
+// FSA sidebar resize
+let fsaResizing = false;
+fsaSidebarResize.addEventListener('mousedown', () => { fsaResizing = true; });
+window.addEventListener('mousemove', (e: MouseEvent) => {
+  if (!fsaResizing) return;
+  const rect = fsaOverlayEl.getBoundingClientRect();
+  const w = Math.min(Math.max(e.clientX - rect.left, 160), 500);
+  fsaOverlayEl.style.gridTemplateColumns = `${w}px 4px 1fr`;
+});
+window.addEventListener('mouseup', () => { fsaResizing = false; });

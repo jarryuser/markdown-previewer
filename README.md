@@ -47,6 +47,10 @@ The project also ships a small CLI (`mdp`) that renders any local `.md` file in 
 | 🌙 | **Light / dark theme** | Follows system preference by default; toggle in the toolbar |
 | ⌨️ | **Tab key** | Inserts two spaces instead of moving focus |
 | 📄 | **GitHub Flavored Markdown** | Tables, strikethrough, task lists, autolinks |
+| 🔍 | **Find & replace** | Toolbar button or `Mod+F` opens CodeMirror's search panel |
+| 📑 | **Table of contents** | TOC button shows a sidebar with clickable headings |
+| 📐 | **Mermaid diagrams** | ` ```mermaid ` code blocks rendered as diagrams; theme-aware |
+| 📂 | **Open local file / directory** | File System Access API; live-reload on external edits; `Mod+S` to save |
 
 ---
 
@@ -86,9 +90,42 @@ mdp ~/notes/ideas.md
 # entire directory (Obsidian vault, notes folder, etc.)
 mdp ~/notes/
 mdp ./docs/
+
+# specify a fixed port
+mdp README.md --port 3000
+
+# show recent files (numbered list)
+mdp
+
+# reopen entry #2 from the recent list
+mdp 2
+
+# render to terminal with ANSI colors (stdout, no browser)
+mdp README.md -t
+mdp README.md --terminal
+
+# interactive TUI: split-pane in the terminal
+mdp README.md --tui
+mdp ~/notes/ --tui
 ```
 
 The browser opens automatically. Edit files in any editor - the page reloads on each save
+
+In directory mode, press `/` to filter the file tree by name, `j`/`k` to navigate, and `c` to collapse or expand all folders
+
+### TUI mode
+
+`--tui` opens a full-screen terminal interface instead of the browser. The HTTP server still starts in the background, so pressing `b` opens the current file in the browser at any time
+
+| Key | Action |
+|---|---|
+| `j` / `k` | scroll preview or navigate tree |
+| `Tab` | switch focus between tree and preview |
+| `l` / `Enter` | open file or expand folder |
+| `h` | collapse folder or jump to parent |
+| `/` | search files by name |
+| `b` | open current file in browser |
+| `q` / `Ctrl+C` | quit |
 
 ### Uninstall
 
@@ -148,6 +185,13 @@ npm run build     # production build -> dist/
 - [x] **Recent files** - `mdp` with no arguments shows a numbered list of recently opened files; `mdp 2` reopens entry #2
 - [x] **Search in file tree** - press `/` to filter files by name; `↑`/`↓` to navigate results; `Enter` to open; `Escape` to close
 - [x] **Wikilinks** - `[[filename]]` and `[[filename|alias]]` links in directory mode navigate between files in the vault
+- [x] **Open local file (FSA)** - Open File button loads any `.md` file directly into the editor; page auto-reloads when the file is saved externally; `Mod+S` saves changes back to disk
+- [x] **Open local directory (FSA)** - Open Dir button opens a folder using the File System Access API; full file tree sidebar, click any file to preview
+- [x] **Back / forward navigation** - browser-style history in the FSA directory overlay; `Alt+←` / `Alt+→` or the arrow buttons navigate between viewed files
+- [x] **Resizable sidebar** - drag the handle between sidebar and content to resize; works in both the FSA overlay and CLI directory mode
+- [x] **Breadcrumb** - the current file path is shown above the preview in directory mode; each segment is a clickable link
+- [x] **Terminal output** (`-t` / `--terminal`) - renders any `.md` file to stdout with ANSI colors; headings, bold, italic, code blocks, tables; pipeable to `less`
+- [x] **TUI mode** (`--tui`) - interactive split-pane in the terminal; file tree on the left, preview on the right; j/k navigation, `/` search, `b` to open in browser; auto-refreshes on file save
 
 ### Planned
 

@@ -260,6 +260,11 @@ ansiMarked.use({
     },
     list(body: string, _ordered: boolean): string { return '\n' + body + '\n'; },
     listitem(text: string): string {
+      const m = text.match(/^<input([^>]*)>([\s\S]*)/);
+      if (m) {
+        const checked = /checked/.test(m[1]);
+        return `  ${checked ? `${ac(L.list1)}☑${C.r}` : `${C.d}☐${C.r}`} ${m[2].trimEnd()}\n`;
+      }
       return `  ${ac(L.list1)}•${C.r} ${text.trimEnd()}\n`;
     },
     link(href: string, _title: string | null | undefined, text: string): string {
@@ -275,12 +280,10 @@ ansiMarked.use({
       return `\n${ac(L.rule)}${'─'.repeat(w)}${C.r}\n\n`;
     },
     br(): string { return '\n'; },
-    table(header: string, body: string): string {
-      return `\n${header}${ac(L.rule)}${'─'.repeat(40)}${C.r}\n${body}\n`;
-    },
-    tablerow(content: string): string { return content.trimEnd() + '\n'; },
+    table(header: string, body: string): string { return formatTable(header, body, 'ansi'); },
+    tablerow(content: string): string { return content + '\x02'; },
     tablecell(content: string, flags: { header?: boolean }): string {
-      return (flags.header ? `${C.b}${ac(L.h1)}${content}${C.r}` : content) + '  ';
+      return (flags.header ? '\x00' : '') + content + '\x01';
     },
     html(_text: string): string { return ''; },
   },
@@ -311,8 +314,13 @@ blessedMarked.use({
         .map(l => `${bc(L.bqBar)}▌{/} ${bc(L.bqText)}${l}{/}`)
         .join('\n') + '\n\n';
     },
-    list(body: string, _ordered: boolean): string { return body + '\n'; },
+    list(body: string, _ordered: boolean): string { return '\n' + body + '\n'; },
     listitem(text: string): string {
+      const m = text.match(/^<input([^>]*)>([\s\S]*)/);
+      if (m) {
+        const checked = /checked/.test(m[1]);
+        return `  ${checked ? `${bc(L.list1)}☑{/}` : `{gray-fg}☐{/}`} ${m[2].trimEnd()}\n`;
+      }
       return `  ${bc(L.list1)}•{/} ${text.trimEnd()}\n`;
     },
     link(href: string, _title: string | null | undefined, text: string): string {
@@ -327,16 +335,53 @@ blessedMarked.use({
       return `\n${bc(L.rule)}${'─'.repeat(60)}{/}\n\n`;
     },
     br(): string { return '\n'; },
-    table(header: string, body: string): string {
-      return `\n${header}${bc(L.rule)}${'─'.repeat(40)}{/}\n${body}\n`;
-    },
-    tablerow(content: string): string { return content.trimEnd() + '\n'; },
+    table(header: string, body: string): string { return formatTable(header, body, 'blessed'); },
+    tablerow(content: string): string { return content + '\x02'; },
     tablecell(content: string, flags: { header?: boolean }): string {
-      return (flags.header ? `{bold}${bc(L.h1)}${content}{/bold}{/}` : content) + '  ';
+      return (flags.header ? '\x00' : '') + content + '\x01';
     },
     html(_text: string): string { return ''; },
   },
 });
+
+function visibleLen(s: string): number {
+  return s.replace(/\x1b\[[^m]*m/g, '').replace(/\{[^}]*\}/g, '').length;
+}
+
+function formatTable(rawHeader: string, rawBody: string, target: 'ansi' | 'blessed'): string {
+  const fr  = (s: string) => target === 'ansi' ? `${ac(L.rule)}${s}${C.r}` : `${bc(L.rule)}${s}{/}`;
+  const hdr = (s: string) => target === 'ansi' ? `${C.b}${ac(L.h1)}${s}${C.r}` : `{bold}${bc(L.h1)}${s}{/bold}{/}`;
+
+  const parseRow = (raw: string) =>
+    raw.split('\x01').filter(Boolean).map(c => c.startsWith('\x00') ? { t: c.slice(1), h: true } : { t: c, h: false });
+
+  const hdrCells  = parseRow(rawHeader.split('\x02')[0] ?? '');
+  const bodyCells = rawBody.split('\x02').filter(Boolean).map(r => parseRow(r));
+  const cols      = Math.max(hdrCells.length, ...bodyCells.map(r => r.length));
+
+  const widths = Array.from({ length: cols }, (_, i) =>
+    Math.max(1, visibleLen(hdrCells[i]?.t ?? ''), ...bodyCells.map(r => visibleLen(r[i]?.t ?? '')))
+  );
+
+  const pad = (s: string, w: number) => s + ' '.repeat(Math.max(0, w - visibleLen(s)));
+  const border = (l: string, m: string, r: string) =>
+    fr(l + widths.map(w => '─'.repeat(w + 2)).join(m) + r);
+  const fmtRow = (cells: { t: string; h: boolean }[]) =>
+    fr('│') + Array.from({ length: cols }, (_, i) => {
+      const cell = cells[i] ?? { t: '', h: false };
+      return ` ${cell.h ? hdr(pad(cell.t, widths[i])) : pad(cell.t, widths[i])} `;
+    }).join(fr('│')) + fr('│');
+
+  return [
+    '',
+    border('┌', '┬', '┐'),
+    fmtRow(hdrCells),
+    border('├', '┼', '┤'),
+    ...bodyCells.map(r => fmtRow(r)),
+    border('└', '┴', '┘'),
+    '',
+  ].join('\n') + '\n';
+}
 
 function renderAnsi(md: string): string {
   return ansiMarked.parse(stripFrontmatter(md)) as string;
@@ -344,6 +389,22 @@ function renderAnsi(md: string): string {
 
 function renderBlessed(md: string): string {
   return blessedMarked.parse(stripFrontmatter(md)) as string;
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Injects {inverse}...{/inverse} around query matches in blessed-tagged content,
+// skipping over tag spans so tag names are never modified.
+function highlightInBlessedContent(content: string, query: string): string {
+  if (!query) return content;
+  const re = new RegExp(escapeRegex(query), 'gi');
+  const parts = content.split(/(\{[^}]*\})/g); // alternate: plain, tag, plain, tag, ...
+  return parts.map((part, i) => {
+    if (i % 2 === 1) return part; // it's a tag span
+    return part.replace(re, m => `{inverse}${m}{/inverse}`);
+  }).join('');
 }
 
 function escHtml(s: string): string {
@@ -1328,13 +1389,13 @@ function runTui(previewUrl: string): void {
 
   const helpBox = blessed.box({
     top: 'center', left: 'center',
-    width: '56', height: '90%',
+    width: '70%', height: '90%',
     border: { type: 'line' },
     label: ' Help  [q/?/Esc] close ',
     scrollable: true,
     tags: true,
-    padding: { left: 1, right: 1, top: 0, bottom: 0 },
-    style: { border: { fg: 'cyan' as any } },
+    padding: { left: 1, right: 2, top: 0, bottom: 0 },
+    style: { bg: 'black' as any, border: { fg: 'cyan' as any } },
     content: helpContent,
     hidden: true,
   } as any);
@@ -1343,14 +1404,16 @@ function runTui(previewUrl: string): void {
   // TOC overlay
   const tocList = blessed.list({
     top: 'center', left: 'center',
-    width: '60%', height: '70%',
+    width: '65%', height: '75%',
     border: { type: 'line' },
     label: ' Table of Contents  [Esc/q] close ',
     scrollable: true,
     keys: false,
     mouse: true,
+    tags: false,
     style: {
-      item: {},
+      bg: 'black' as any,
+      item: { bg: 'black' as any },
       selected: { bg: 'blue', fg: 'white', bold: true },
       border: { fg: 'cyan' as any },
     },
@@ -1362,20 +1425,37 @@ function runTui(previewUrl: string): void {
   let searchMatches: number[] = [];
   let searchIdx = 0;
   let lastSearch = '';
+  let originalContent = '';
 
   function doSearch(query: string): void {
     lastSearch = query;
-    const content = stripBlessedTags((previewBox as any).getContent ? (previewBox as any).getContent() : '');
-    const lines = content.split('\n');
+    if (!originalContent) originalContent = (previewBox as any).getContent?.() ?? '';
+
+    const plain = stripBlessedTags(originalContent);
+    const lines = plain.split('\n');
     const q = query.toLowerCase();
-    searchMatches = lines.reduce<number[]>((acc, l, i) => { if (l.toLowerCase().includes(q)) acc.push(i); return acc; }, []);
+    searchMatches = lines.reduce<number[]>((acc, l, i) => {
+      if (l.toLowerCase().includes(q)) acc.push(i);
+      return acc;
+    }, []);
     searchIdx = 0;
+
+    const highlighted = highlightInBlessedContent(originalContent, query);
+    previewBox.setContent(highlighted);
     if (searchMatches.length) (previewBox as any).scrollTo(searchMatches[0]);
-    const label = query
-      ? ` ${basename(tuiCurrentPath || argPath)} — ${searchMatches.length} match${searchMatches.length !== 1 ? 'es' : ''} `
-      : ` ${basename(tuiCurrentPath || argPath)} `;
-    previewBox.setLabel(label);
+
+    const name = basename(tuiCurrentPath || argPath);
+    previewBox.setLabel(query
+      ? ` ${name}  ${searchMatches.length} match${searchMatches.length !== 1 ? 'es' : ''} `
+      : ` ${name} `);
     screen.render();
+  }
+
+  function clearSearch(): void {
+    if (originalContent) { previewBox.setContent(originalContent); originalContent = ''; }
+    searchMatches = [];
+    lastSearch = '';
+    previewBox.setLabel(` ${basename(tuiCurrentPath || argPath)} `);
   }
 
   function openEditor(): void {
@@ -1433,10 +1513,12 @@ function runTui(previewUrl: string): void {
     const fullPath = isDir ? resolve(argPath, filePath) : filePath;
     const pos = keepScroll ? ((previewBox as any).childBase ?? 0) : 0;
     gBlessedWidth = Math.max(20, ((previewBox as any).width as number) - 7);
-    searchMatches = [];
+    searchMatches = []; originalContent = '';
     try {
       const md = readFileSync(fullPath, 'utf-8');
-      previewBox.setContent(renderBlessed(md));
+      const rendered = renderBlessed(md);
+      originalContent = rendered;
+      previewBox.setContent(lastSearch ? highlightInBlessedContent(rendered, lastSearch) : rendered);
     } catch {
       previewBox.setContent(`{red-fg}Could not load: ${filePath}{/red-fg}`);
     }
@@ -1456,7 +1538,8 @@ function runTui(previewUrl: string): void {
     process.exit(0);
   });
   screen.key('escape', () => {
-    if (overlayOpen) { helpBox.hide(); tocList.hide(); previewBox.focus(); screen.render(); }
+    if (overlayOpen) { helpBox.hide(); tocList.hide(); previewBox.focus(); screen.render(); return; }
+    if (lastSearch) { clearSearch(); screen.render(); }
   });
   screen.key('?', () => {
     if (overlayOpen) return;

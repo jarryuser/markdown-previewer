@@ -77,6 +77,7 @@ const L = {
   list3:     [168, 168, 185] as const,
   link:      [ 88, 152, 238] as const,
   rule:      [ 48,  56,  76] as const,
+  tableB:    [110, 130, 185] as const, // table border - brighter than rule
 } as const;
 
 type Rgb = readonly [number, number, number];
@@ -263,7 +264,7 @@ ansiMarked.use({
       const m = text.match(/^<input([^>]*)>([\s\S]*)/);
       if (m) {
         const checked = /checked/.test(m[1]);
-        return `  ${checked ? `${ac(L.list1)}☑${C.r}` : `${C.d}☐${C.r}`} ${m[2].trimEnd()}\n`;
+        return `  ${checked ? `${C.b}${ac(L.list1)}[✓]${C.r}` : `${C.d}[ ]${C.r}`} ${m[2].trimEnd()}\n`;
       }
       return `  ${ac(L.list1)}•${C.r} ${text.trimEnd()}\n`;
     },
@@ -319,7 +320,7 @@ blessedMarked.use({
       const m = text.match(/^<input([^>]*)>([\s\S]*)/);
       if (m) {
         const checked = /checked/.test(m[1]);
-        return `  ${checked ? `${bc(L.list1)}☑{/}` : `{gray-fg}☐{/}`} ${m[2].trimEnd()}\n`;
+        return `  ${checked ? `{bold}${bc(L.list1)}[✓]{/bold}{/}` : `{gray-fg}[ ]{/}`} ${m[2].trimEnd()}\n`;
       }
       return `  ${bc(L.list1)}•{/} ${text.trimEnd()}\n`;
     },
@@ -348,8 +349,20 @@ function visibleLen(s: string): number {
   return s.replace(/\x1b\[[^m]*m/g, '').replace(/\{[^}]*\}/g, '').length;
 }
 
+// Truncates tagged content to maxW visible characters, appending '…' if cut.
+function truncateVisible(s: string, maxW: number): string {
+  if (visibleLen(s) <= maxW) return s;
+  let vis = 0; let out = ''; let i = 0;
+  while (i < s.length && vis < maxW - 1) {
+    if (s[i] === '{') { const e = s.indexOf('}', i); if (e !== -1) { out += s.slice(i, e + 1); i = e + 1; continue; } }
+    if (s[i] === '\x1b') { const e = s.indexOf('m', i); if (e !== -1) { out += s.slice(i, e + 1); i = e + 1; continue; } }
+    out += s[i++]; vis++;
+  }
+  return out + '…';
+}
+
 function formatTable(rawHeader: string, rawBody: string, target: 'ansi' | 'blessed'): string {
-  const fr  = (s: string) => target === 'ansi' ? `${ac(L.rule)}${s}${C.r}` : `${bc(L.rule)}${s}{/}`;
+  const fr  = (s: string) => target === 'ansi' ? `${ac(L.tableB)}${s}${C.r}` : `${bc(L.tableB)}${s}{/}`;
   const hdr = (s: string) => target === 'ansi' ? `${C.b}${ac(L.h1)}${s}${C.r}` : `{bold}${bc(L.h1)}${s}{/bold}{/}`;
 
   const parseRow = (raw: string) =>
@@ -359,11 +372,20 @@ function formatTable(rawHeader: string, rawBody: string, target: 'ansi' | 'bless
   const bodyCells = rawBody.split('\x02').filter(Boolean).map(r => parseRow(r));
   const cols      = Math.max(hdrCells.length, ...bodyCells.map(r => r.length));
 
-  const widths = Array.from({ length: cols }, (_, i) =>
-    Math.max(1, visibleLen(hdrCells[i]?.t ?? ''), ...bodyCells.map(r => visibleLen(r[i]?.t ?? '')))
+  let widths = Array.from({ length: cols }, (_, i) =>
+    Math.max(3, visibleLen(hdrCells[i]?.t ?? ''), ...bodyCells.map(r => visibleLen(r[i]?.t ?? '')))
   );
 
-  const pad = (s: string, w: number) => s + ' '.repeat(Math.max(0, w - visibleLen(s)));
+  // shrink columns proportionally if table is wider than available space
+  const available = target === 'ansi' ? (process.stdout.columns || 80) - 2 : gBlessedWidth;
+  const overhead  = cols * 3 + 1;
+  const natural   = widths.reduce((s, w) => s + w, 0);
+  if (natural + overhead > available) {
+    const budget = Math.max(cols * 4, available - overhead);
+    widths = widths.map(w => Math.max(4, Math.floor(w * budget / natural)));
+  }
+
+  const pad = (s: string, w: number) => truncateVisible(s, w) + ' '.repeat(Math.max(0, w - visibleLen(truncateVisible(s, w))));
   const border = (l: string, m: string, r: string) =>
     fr(l + widths.map(w => '─'.repeat(w + 2)).join(m) + r);
   const fmtRow = (cells: { t: string; h: boolean }[]) =>

@@ -65,7 +65,8 @@ const L = {
   h56:       [180, 180, 190] as const,
   hLine:     [ 40,  50,  75] as const,
   bold:      [245, 245, 255] as const,
-  codeFg:    [220, 150, 118] as const,
+  codeFg:    [220, 150, 118] as const, // inline code (base09 orange)
+  codeText:  [192, 197, 206] as const, // default code-block text (base05)
   codeBg:    [ 38,  32,  31] as const,
   codeFrame: [ 40,  48,  68] as const,
   codeLabel: [ 95, 110, 145] as const,
@@ -91,6 +92,148 @@ function toHex([r, g, b]: Rgb): string {
 function bc(rgb: Rgb): string   { return `{#${toHex(rgb)}-fg}`; }
 function bcBg(rgb: Rgb): string { return `{#${toHex(rgb)}-bg}`; }
 
+// base16-ocean.dark syntax palette (leaf uses this for code highlighting)
+const SYN: Record<string, Rgb> = {
+  keyword:   [180, 142, 173], // purple
+  built_in:  [150, 181, 180], // cyan
+  type:      [235, 203, 139], // yellow
+  literal:   [208, 135, 112], // orange
+  number:    [208, 135, 112], // orange
+  string:    [163, 190, 140], // green
+  regexp:    [163, 190, 140], // green
+  comment:   [101, 115, 126], // gray
+  doctag:    [101, 115, 126],
+  title:     [143, 161, 179], // blue (function/class names)
+  function:  [143, 161, 179],
+  class:     [235, 203, 139],
+  params:    [192, 197, 206], // default text
+  variable:  [191, 97, 106],  // red
+  attr:      [143, 161, 179], // blue
+  property:  [191, 97, 106],
+  symbol:    [150, 181, 180],
+  meta:      [150, 181, 180],
+  'meta-keyword': [180, 142, 173],
+  'meta-string':  [163, 190, 140],
+  operator:  [150, 181, 180],
+  punctuation: [192, 197, 206],
+  'selector-tag':   [180, 142, 173],
+  'selector-class': [235, 203, 139],
+  'selector-id':    [143, 161, 179],
+  tag:       [180, 142, 173],
+  name:      [180, 142, 173],
+  bullet:    [208, 135, 112],
+  link:      [150, 181, 180],
+  'attr-name': [143, 161, 179],
+};
+
+interface Run { text: string; color: Rgb | null; }
+
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+// runs hljs and converts the HTML output to per-line colored runs
+function highlightRuns(code: string, lang: string | undefined): Run[][] {
+  let html: string;
+  try {
+    html = lang && hljs.getLanguage(lang)
+      ? hljs.highlight(code, { language: lang }).value
+      : hljs.highlightAuto(code).value;
+  } catch {
+    html = code.split('\n').map(escHtml).join('\n');
+  }
+  const lines: Run[][] = [[]];
+  const stack: (Rgb | null)[] = [];
+  const cur = (): Rgb | null => {
+    for (let i = stack.length - 1; i >= 0; i--) if (stack[i]) return stack[i];
+    return null;
+  };
+  const re = /<span class="([^"]*)">|<\/span>|([^<]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    if (m[1] !== undefined) {
+      const cls = m[1].replace(/hljs-/g, '').trim().split(/[\s.]/)[0];
+      stack.push(SYN[cls] ?? null);
+    } else if (m[0] === '</span>') {
+      stack.pop();
+    } else if (m[2] !== undefined) {
+      const text = decodeEntities(m[2]);
+      const color = cur();
+      const parts = text.split('\n');
+      for (let i = 0; i < parts.length; i++) {
+        if (i > 0) lines.push([]);
+        if (parts[i]) lines[lines.length - 1].push({ text: parts[i], color });
+      }
+    }
+  }
+  return lines;
+}
+
+// soft-wraps a line's runs to the given visible width, keeping colors intact
+function wrapRuns(runs: Run[], width: number): Run[][] {
+  if (width <= 0) return [runs];
+  const out: Run[][] = [];
+  let line: Run[] = [];
+  let vis = 0;
+  for (const run of runs) {
+    let text = run.text;
+    while (text.length) {
+      const space = width - vis;
+      if (space <= 0) { out.push(line); line = []; vis = 0; continue; }
+      const take = text.slice(0, space);
+      line.push({ text: take, color: run.color });
+      vis += take.length;
+      text = text.slice(space);
+    }
+  }
+  out.push(line);
+  return out;
+}
+
+// width available to the blessed preview/pager box; set before each render
+let gBlessedWidth = 72;
+
+// builds a framed, line-numbered, syntax-highlighted code block
+function codeBox(code: string, lang: string | undefined, target: 'ansi' | 'blessed'): string {
+  const frameOn  = target === 'ansi' ? ac(L.codeFrame) : bc(L.codeFrame);
+  const labelOn  = target === 'ansi' ? ac(L.codeLabel) : bc(L.codeLabel);
+  const off      = target === 'ansi' ? C.r : '{/}';
+  const fg       = (c: Rgb | null) => target === 'ansi' ? ac(c ?? L.codeText) : bc(c ?? L.codeText);
+
+  const width    = target === 'ansi' ? Math.min((process.stdout.columns || 80) - 1, 100) : gBlessedWidth;
+  const runLines = highlightRuns(code.replace(/\n+$/, ''), lang);
+  const numW     = String(runLines.length).length;
+  const gutter   = numW + 2;                       // " N "
+  const codeW    = Math.max(8, width - gutter - 2); // minus the two side borders
+  const inner    = gutter + codeW;
+
+  const lab = lang ? ` ${lang} ` : '';
+  const top = `${frameOn}╭─${labelOn}${lab}${frameOn}${'─'.repeat(Math.max(0, inner - 2 - lab.length))}╮${off}`;
+  const bot = `${frameOn}╰${'─'.repeat(inner)}╯${off}`;
+
+  const body: string[] = [];
+  runLines.forEach((runs, idx) => {
+    const wrapped = wrapRuns(runs, codeW);
+    wrapped.forEach((seg, wi) => {
+      const num = wi === 0 ? String(idx + 1).padStart(numW) : ' '.repeat(numW);
+      let line = `${frameOn}│${off}${labelOn} ${num} ${off}`;
+      let vis = 0;
+      for (const r of seg) { line += `${fg(r.color)}${r.text}${off}`; vis += r.text.length; }
+      line += ' '.repeat(Math.max(0, codeW - vis));
+      line += `${frameOn}│${off}`;
+      body.push(line);
+    });
+  });
+
+  return `\n${top}\n${body.join('\n')}\n${bot}\n\n`;
+}
+
 // ── ANSI renderer - leaf ocean dark theme, 24-bit true color ─────────────────
 
 const H_COLORS_ANSI: Rgb[] = [L.h1, L.h2, L.h3, L.h4, L.h56, L.h56];
@@ -108,14 +251,7 @@ ansiMarked.use({
     del(text: string): string       { return `${C.d}${text}${C.r}`; },
     codespan(code: string): string  { return `${acBg(L.codeBg)}${ac(L.codeFg)} ${code} ${C.r}`; },
     code(code: string, lang: string | undefined): string {
-      const frame = ac(L.codeFrame);
-      const label = lang ? `${ac(L.codeLabel)}${lang}${C.r}\n` : '';
-      const rows  = code.split('\n');
-      const pad   = String(rows.length).length;
-      const lines = rows.map((l, i) =>
-        `${frame}${String(i + 1).padStart(pad)} │${C.r} ${ac(L.codeFg)}${l}${C.r}`
-      ).join('\n');
-      return `\n${label}${lines}\n\n`;
+      return codeBox(code, lang, 'ansi');
     },
     blockquote(quote: string): string {
       return quote.split('\n').filter(Boolean)
@@ -168,13 +304,7 @@ blessedMarked.use({
     del(text: string): string       { return `{gray-fg}${text}{/gray-fg}`; },
     codespan(code: string): string  { return `${bcBg(L.codeBg)}${bc(L.codeFg)} ${code} {/}{/}`; },
     code(code: string, lang: string | undefined): string {
-      const label = lang ? `${bc(L.codeLabel)}${lang}{/}\n` : '';
-      const rows  = code.split('\n');
-      const pad   = String(rows.length).length;
-      const lines = rows.map((l, i) =>
-        `${bc(L.codeFrame)}${String(i + 1).padStart(pad)} │{/} ${l}`
-      ).join('\n');
-      return `\n${label}${lines}\n\n`;
+      return codeBox(code, lang, 'blessed');
     },
     blockquote(quote: string): string {
       return quote.split('\n').filter(Boolean)
@@ -1147,6 +1277,7 @@ function runTui(previewUrl: string): void {
     tuiCurrentPath = filePath;
     const fullPath = isDir ? resolve(argPath, filePath) : filePath;
     const pos = keepScroll ? ((previewBox as any).childBase ?? 0) : 0;
+    gBlessedWidth = Math.max(20, ((previewBox as any).width as number) - 7);
     try {
       const md = readFileSync(fullPath, 'utf-8');
       previewBox.setContent(renderBlessed(md));
@@ -1320,7 +1451,6 @@ if (isTerminal) {
     mouse: true,
     tags: true,
     padding: { left: 3, right: 3, top: 1, bottom: 1 },
-    content: renderBlessed(currentMd),
   } as any);
 
   const hint = blessed.box({
@@ -1332,6 +1462,9 @@ if (isTerminal) {
   screen.append(pager);
   screen.append(hint);
 
+  gBlessedWidth = Math.max(20, ((screen.width as number) || 80) - 8);
+  pager.setContent(renderBlessed(currentMd));
+
   screen.key(['j', 'down'],     () => { (pager as any).scroll(3);  screen.render(); });
   screen.key(['k', 'up'],       () => { (pager as any).scroll(-3); screen.render(); });
   screen.key(['g', 'home'],     () => { (pager as any).scrollTo(0); screen.render(); });
@@ -1342,6 +1475,7 @@ if (isTerminal) {
 
   tuiFileChanged = () => {
     const pos = (pager as any).childBase ?? 0;
+    gBlessedWidth = Math.max(20, ((screen.width as number) || 80) - 8);
     pager.setContent(renderBlessed(currentMd));
     (pager as any).scrollTo(pos);
     screen.render();

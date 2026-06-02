@@ -978,6 +978,19 @@ let tuiFileChanged: ((changedPath: string) => void) | null = null;
 
 // argument parsing
 const args = process.argv.slice(2);
+
+if (args.includes('--help') || args.includes('-h')) {
+  console.log(`\nUsage: mdp [options] [file.md | directory]\n
+Options:
+  -h, --help             Show this help message
+  -t, --terminal         Render in a terminal pager (scrollable, no browser)
+      --tui              Open interactive TUI: file tree + preview
+      --port <number>    Use a fixed port instead of a random one
+\nWith no arguments, shows a numbered list of recently opened files.
+Use  mdp <number>  to reopen an entry.\n`);
+  process.exit(0);
+}
+
 let portArg: number | undefined;
 const pathArgs: string[] = [];
 for (let i = 0; i < args.length; i++) {

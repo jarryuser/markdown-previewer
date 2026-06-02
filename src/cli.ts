@@ -363,26 +363,38 @@ function isWideChar(cp: number): boolean {
   );
 }
 
-function visibleLen(s: string): number {
+const blessedUnicode = (blessed as any).unicode;
+
+// Visible width of a string for a given render target.
+// blessed positions cells with its own width model (every emoji = 1 cell) and
+// repositions absolutely, so matching blessed.unicode keeps its grid aligned.
+// In raw ANSI mode the terminal advances sequentially, so emoji must count as 2.
+function visibleLen(s: string, target: 'ansi' | 'blessed'): number {
   const plain = s.replace(/\x1b\[[^m]*m/g, '').replace(/\{[^}]*\}/g, '');
-  let len = 0;
+  if (target === 'blessed' && blessedUnicode?.strWidth) {
+    return blessedUnicode.strWidth(plain);
+  }
+  let len = 0; let prevW = 0;
   for (const char of [...plain]) {               // spread for proper surrogate-pair iteration
     const cp = char.codePointAt(0) ?? 0;
-    if (cp === 0xFE0F || cp === 0xFE0E || cp === 0x200D ||
-        (cp >= 0x200B && cp <= 0x200F)) continue; // zero-width / variation selectors
-    len += isWideChar(cp) ? 2 : 1;
+    if (cp === 0xFE0F) { if (prevW === 1) { len += 1; prevW = 2; } continue; } // emoji presentation - widen prev
+    if (cp === 0xFE0E || cp === 0x200D || (cp >= 0x200B && cp <= 0x200F)) continue; // text/zero-width
+    const w = isWideChar(cp) ? 2 : 1;
+    len += w; prevW = w;
   }
   return len;
 }
 
-// Truncates tagged content to maxW visible characters, appending '…' if cut.
-function truncateVisible(s: string, maxW: number): string {
-  if (visibleLen(s) <= maxW) return s;
+// Truncates tagged content to maxW visible cells, appending '…' if cut.
+function truncateVisible(s: string, maxW: number, target: 'ansi' | 'blessed'): string {
+  if (visibleLen(s, target) <= maxW) return s;
   let vis = 0; let out = ''; let i = 0;
-  while (i < s.length && vis < maxW - 1) {
-    if (s[i] === '{') { const e = s.indexOf('}', i); if (e !== -1) { out += s.slice(i, e + 1); i = e + 1; continue; } }
-    if (s[i] === '\x1b') { const e = s.indexOf('m', i); if (e !== -1) { out += s.slice(i, e + 1); i = e + 1; continue; } }
-    out += s[i++]; vis++;
+  for (const ch of [...s]) {
+    if (ch === '{') { const e = s.indexOf('}', i); if (e !== -1) { out += s.slice(i, e + 1); i = e + 1; continue; } }
+    if (ch === '\x1b') { const e = s.indexOf('m', i); if (e !== -1) { out += s.slice(i, e + 1); i = e + 1; continue; } }
+    const w = visibleLen(ch, target);
+    if (vis + w > maxW - 1) break;
+    out += ch; vis += w; i += ch.length;
   }
   return out + '…';
 }
@@ -399,7 +411,7 @@ function formatTable(rawHeader: string, rawBody: string, target: 'ansi' | 'bless
   const cols      = Math.max(hdrCells.length, ...bodyCells.map(r => r.length));
 
   let widths = Array.from({ length: cols }, (_, i) =>
-    Math.max(3, visibleLen(hdrCells[i]?.t ?? ''), ...bodyCells.map(r => visibleLen(r[i]?.t ?? '')))
+    Math.max(3, visibleLen(hdrCells[i]?.t ?? '', target), ...bodyCells.map(r => visibleLen(r[i]?.t ?? '', target)))
   );
 
   // shrink columns proportionally if table is wider than available space
@@ -411,7 +423,10 @@ function formatTable(rawHeader: string, rawBody: string, target: 'ansi' | 'bless
     widths = widths.map(w => Math.max(4, Math.floor(w * budget / natural)));
   }
 
-  const pad = (s: string, w: number) => truncateVisible(s, w) + ' '.repeat(Math.max(0, w - visibleLen(truncateVisible(s, w))));
+  const pad = (s: string, w: number) => {
+    const t = truncateVisible(s, w, target);
+    return t + ' '.repeat(Math.max(0, w - visibleLen(t, target)));
+  };
   const border = (l: string, m: string, r: string) =>
     fr(l + widths.map(w => '─'.repeat(w + 2)).join(m) + r);
   const fmtRow = (cells: { t: string; h: boolean }[]) =>

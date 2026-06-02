@@ -99,10 +99,8 @@ const ansiMarked = new Marked({ gfm: true });
 ansiMarked.use({
   renderer: {
     heading(text: string, depth: number): string {
-      const col  = H_COLORS_ANSI[Math.min(depth - 1, H_COLORS_ANSI.length - 1)];
-      const line = ac(L.hLine) + '─'.repeat(Math.min((process.stdout.columns || 80) - 2, 60)) + C.r;
-      const head = `${C.b}${ac(col)}${text}${C.r}`;
-      return depth <= 2 ? `\n${head}\n${line}\n\n` : `\n${head}\n\n`;
+      const col = H_COLORS_ANSI[Math.min(depth - 1, H_COLORS_ANSI.length - 1)];
+      return `\n${C.b}${ac(col)}${text}${C.r}\n\n`;
     },
     paragraph(text: string): string { return text + '\n\n'; },
     strong(text: string): string    { return `${C.b}${ac(L.bold)}${text}${C.r}`; },
@@ -110,14 +108,14 @@ ansiMarked.use({
     del(text: string): string       { return `${C.d}${text}${C.r}`; },
     codespan(code: string): string  { return `${acBg(L.codeBg)}${ac(L.codeFg)} ${code} ${C.r}`; },
     code(code: string, lang: string | undefined): string {
-      const w     = Math.min((process.stdout.columns || 80) - 2, 72);
       const frame = ac(L.codeFrame);
-      const top   = lang
-        ? `${frame}${'─'.repeat(2)}${C.r} ${ac(L.codeLabel)}${lang}${C.r} ${frame}${'─'.repeat(Math.max(0, w - lang.length - 4))}${C.r}`
-        : `${frame}${'─'.repeat(w)}${C.r}`;
-      const bot   = `${frame}${'─'.repeat(w)}${C.r}`;
-      const lines = code.split('\n').map(l => `${frame}│${C.r} ${ac(L.codeFg)}${l}${C.r}`).join('\n');
-      return `\n${top}\n${lines}\n${bot}\n\n`;
+      const label = lang ? `${ac(L.codeLabel)}${lang}${C.r}\n` : '';
+      const rows  = code.split('\n');
+      const pad   = String(rows.length).length;
+      const lines = rows.map((l, i) =>
+        `${frame}${String(i + 1).padStart(pad)} │${C.r} ${ac(L.codeFg)}${l}${C.r}`
+      ).join('\n');
+      return `\n${label}${lines}\n\n`;
     },
     blockquote(quote: string): string {
       return quote.split('\n').filter(Boolean)
@@ -161,10 +159,8 @@ const blessedMarked = new Marked({ gfm: true });
 blessedMarked.use({
   renderer: {
     heading(text: string, depth: number): string {
-      const col   = H_COLORS_BL[Math.min(depth - 1, H_COLORS_BL.length - 1)];
-      const head  = `{bold}${bc(col)}${text}{/bold}{/}`;
-      const line  = depth <= 2 ? `\n${bc(L.hLine)}${'─'.repeat(60)}{/}` : '';
-      return `\n${head}${line}\n\n`;
+      const col = H_COLORS_BL[Math.min(depth - 1, H_COLORS_BL.length - 1)];
+      return `\n{bold}${bc(col)}${text}{/bold}{/}\n\n`;
     },
     paragraph(text: string): string { return text + '\n\n'; },
     strong(text: string): string    { return `{bold}${bc(L.bold)}${text}{/bold}{/}`; },
@@ -172,12 +168,13 @@ blessedMarked.use({
     del(text: string): string       { return `{gray-fg}${text}{/gray-fg}`; },
     codespan(code: string): string  { return `${bcBg(L.codeBg)}${bc(L.codeFg)} ${code} {/}{/}`; },
     code(code: string, lang: string | undefined): string {
-      const top   = lang
-        ? `${bc(L.codeFrame)}──{/} ${bc(L.codeLabel)}${lang}{/} ${bc(L.codeFrame)}${'─'.repeat(Math.max(0, 50 - lang.length - 4))}{/}`
-        : `${bc(L.codeFrame)}${'─'.repeat(50)}{/}`;
-      const bot   = `${bc(L.codeFrame)}${'─'.repeat(50)}{/}`;
-      const lines = code.split('\n').map(l => `${bc(L.codeFrame)}│{/} ${l}`).join('\n');
-      return `\n${top}\n${lines}\n${bot}\n\n`;
+      const label = lang ? `${bc(L.codeLabel)}${lang}{/}\n` : '';
+      const rows  = code.split('\n');
+      const pad   = String(rows.length).length;
+      const lines = rows.map((l, i) =>
+        `${bc(L.codeFrame)}${String(i + 1).padStart(pad)} │{/} ${l}`
+      ).join('\n');
+      return `\n${label}${lines}\n\n`;
     },
     blockquote(quote: string): string {
       return quote.split('\n').filter(Boolean)

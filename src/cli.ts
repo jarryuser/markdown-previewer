@@ -54,125 +54,158 @@ const C = {
   d:  '\x1b[2m',  // dim
   it: '\x1b[3m',  // italic
   u:  '\x1b[4m',  // underline
-  cy: '\x1b[36m', // cyan
-  ye: '\x1b[33m', // yellow
-  gr: '\x1b[32m', // green
-  bl: '\x1b[34m', // blue
-  mg: '\x1b[35m', // magenta
-  gy: '\x1b[90m', // gray
 } as const;
 
-// ── ANSI renderer (for -t / --terminal stdout output) ────────────────────────
+// leaf ocean dark theme (RGB values from presets.rs)
+const L = {
+  h1:        [140, 190, 255] as const,
+  h2:        [120, 210, 170] as const,
+  h3:        [210, 180, 120] as const,
+  h4:        [162, 192, 222] as const,
+  h56:       [180, 180, 190] as const,
+  hLine:     [ 40,  50,  75] as const,
+  bold:      [245, 245, 255] as const,
+  codeFg:    [220, 150, 118] as const,
+  codeBg:    [ 38,  32,  31] as const,
+  codeFrame: [ 40,  48,  68] as const,
+  codeLabel: [ 95, 110, 145] as const,
+  bqText:    [148, 148, 195] as const,
+  bqBar:     [ 75,  80, 148] as const,
+  list1:     [ 95, 200, 148] as const,
+  list2:     [138, 155, 200] as const,
+  list3:     [168, 168, 185] as const,
+  link:      [ 88, 152, 238] as const,
+  rule:      [ 48,  56,  76] as const,
+} as const;
+
+type Rgb = readonly [number, number, number];
+
+// ANSI 24-bit true-color
+function ac([r, g, b]: Rgb): string   { return `\x1b[38;2;${r};${g};${b}m`; }
+function acBg([r, g, b]: Rgb): string { return `\x1b[48;2;${r};${g};${b}m`; }
+
+// blessed hex tag helpers
+function toHex([r, g, b]: Rgb): string {
+  return (r * 65536 + g * 256 + b).toString(16).padStart(6, '0');
+}
+function bc(rgb: Rgb): string   { return `{#${toHex(rgb)}-fg}`; }
+function bcBg(rgb: Rgb): string { return `{#${toHex(rgb)}-bg}`; }
+
+// ── ANSI renderer - leaf ocean dark theme, 24-bit true color ─────────────────
+
+const H_COLORS_ANSI: Rgb[] = [L.h1, L.h2, L.h3, L.h4, L.h56, L.h56];
 
 const ansiMarked = new Marked({ gfm: true });
 ansiMarked.use({
   renderer: {
     heading(text: string, depth: number): string {
-      const cols = process.stdout.columns || 80;
-      if (depth === 1) {
-        const line = '═'.repeat(Math.min(cols - 2, text.length + 4));
-        return `\n${C.b}${C.mg}${line}\n  ${text}\n${line}${C.r}\n\n`;
-      }
-      if (depth === 2) {
-        const line = '─'.repeat(Math.min(cols - 2, text.length + 2));
-        return `\n${C.b}${C.cy}${text}\n${line}${C.r}\n\n`;
-      }
-      const colors = [C.gr, C.ye, C.b, C.d];
-      const col = colors[Math.min(depth - 3, colors.length - 1)];
-      return `\n${C.b}${col}${'###'.slice(0, depth - 2)} ${text}${C.r}\n\n`;
+      const col  = H_COLORS_ANSI[Math.min(depth - 1, H_COLORS_ANSI.length - 1)];
+      const line = ac(L.hLine) + '─'.repeat(Math.min((process.stdout.columns || 80) - 2, 60)) + C.r;
+      const head = `${C.b}${ac(col)}${text}${C.r}`;
+      return depth <= 2 ? `\n${head}\n${line}\n\n` : `\n${head}\n\n`;
     },
     paragraph(text: string): string { return text + '\n\n'; },
-    strong(text: string): string    { return `${C.b}${text}${C.r}`; },
+    strong(text: string): string    { return `${C.b}${ac(L.bold)}${text}${C.r}`; },
     em(text: string): string        { return `${C.it}${text}${C.r}`; },
     del(text: string): string       { return `${C.d}${text}${C.r}`; },
-    codespan(code: string): string  { return `${C.cy}\`${code}\`${C.r}`; },
+    codespan(code: string): string  { return `${acBg(L.codeBg)}${ac(L.codeFg)} ${code} ${C.r}`; },
     code(code: string, lang: string | undefined): string {
-      const cols = process.stdout.columns || 80;
-      const bar  = `${C.gy}${'─'.repeat(Math.min(cols - 2, 60))}${C.r}`;
-      const info = lang ? ` ${C.gy}${lang}${C.r}\n` : '';
-      const lines = code.split('\n').map(l => `${C.gy}▌${C.r} ${C.cy}${l}${C.r}`).join('\n');
-      return `\n${info}${bar}\n${lines}\n${bar}\n\n`;
+      const w     = Math.min((process.stdout.columns || 80) - 2, 72);
+      const frame = ac(L.codeFrame);
+      const top   = lang
+        ? `${frame}${'─'.repeat(2)}${C.r} ${ac(L.codeLabel)}${lang}${C.r} ${frame}${'─'.repeat(Math.max(0, w - lang.length - 4))}${C.r}`
+        : `${frame}${'─'.repeat(w)}${C.r}`;
+      const bot   = `${frame}${'─'.repeat(w)}${C.r}`;
+      const lines = code.split('\n').map(l => `${frame}│${C.r} ${ac(L.codeFg)}${l}${C.r}`).join('\n');
+      return `\n${top}\n${lines}\n${bot}\n\n`;
     },
     blockquote(quote: string): string {
       return quote.split('\n').filter(Boolean)
-        .map(l => `${C.mg}▌${C.r} ${C.d}${l}${C.r}`)
+        .map(l => `${ac(L.bqBar)}▌${C.r} ${ac(L.bqText)}${l}${C.r}`)
         .join('\n') + '\n\n';
     },
-    list(body: string, _ordered: boolean): string { return body + '\n'; },
-    listitem(text: string): string { return `  ${C.cy}•${C.r} ${text}\n`; },
+    list(body: string, _ordered: boolean): string { return '\n' + body + '\n'; },
+    listitem(text: string): string {
+      return `  ${ac(L.list1)}•${C.r} ${text.trimEnd()}\n`;
+    },
     link(href: string, _title: string | null | undefined, text: string): string {
       const label = text || href;
-      const url   = text && text !== href ? ` ${C.gy}↗ ${href}${C.r}` : '';
-      return `${C.bl}${C.u}${label}${C.r}${url}`;
+      const url   = text && text !== href ? ` ${ac(L.hLine)}↗ ${href}${C.r}` : '';
+      return `${C.u}${ac(L.link)}${label}${C.r}${url}`;
     },
     image(_href: string, _title: string | null | undefined, text: string): string {
-      return `${C.gy}[img: ${text || '…'}]${C.r}`;
+      return `${ac(L.hLine)}[img: ${text || '…'}]${C.r}`;
     },
     hr(): string {
       const w = process.stdout.columns || 80;
-      return `\n${C.d}${'─'.repeat(w)}${C.r}\n\n`;
+      return `\n${ac(L.rule)}${'─'.repeat(w)}${C.r}\n\n`;
     },
     br(): string { return '\n'; },
     table(header: string, body: string): string {
-      return `\n${header}${C.gy}${'─'.repeat(40)}${C.r}\n${body}\n`;
+      return `\n${header}${ac(L.rule)}${'─'.repeat(40)}${C.r}\n${body}\n`;
     },
-    tablerow(content: string): string  { return content.trimEnd() + '\n'; },
+    tablerow(content: string): string { return content.trimEnd() + '\n'; },
     tablecell(content: string, flags: { header?: boolean }): string {
-      return (flags.header ? `${C.b}${content}${C.r}` : content) + '  ';
+      return (flags.header ? `${C.b}${ac(L.h1)}${content}${C.r}` : content) + '  ';
     },
     html(_text: string): string { return ''; },
   },
 });
 
-// ── Blessed renderer (for --tui preview box, uses {tag} markup) ───────────────
-// Code content is NOT colorized to avoid escaping issues with { } in code
+// ── Blessed renderer - leaf ocean dark theme, hex color tags ──────────────────
+// Code content has no color tags - avoids { } in code being parsed as blessed tags
+
+const H_COLORS_BL: Rgb[] = [L.h1, L.h2, L.h3, L.h4, L.h56, L.h56];
 
 const blessedMarked = new Marked({ gfm: true });
 blessedMarked.use({
   renderer: {
     heading(text: string, depth: number): string {
-      const tags  = ['{magenta-fg}{bold}', '{cyan-fg}{bold}', '{green-fg}{bold}', '{yellow-fg}{bold}', '{bold}', '{gray-fg}'];
-      const tag   = tags[Math.min(depth - 1, tags.length - 1)];
-      const under = depth <= 2 ? `\n{gray-fg}${'─'.repeat(50)}{/gray-fg}` : '';
-      return `\n${tag}${'#'.repeat(depth)} ${text}{/}${under}\n\n`;
+      const col   = H_COLORS_BL[Math.min(depth - 1, H_COLORS_BL.length - 1)];
+      const head  = `{bold}${bc(col)}${text}{/bold}{/}`;
+      const line  = depth <= 2 ? `\n${bc(L.hLine)}${'─'.repeat(60)}{/}` : '';
+      return `\n${head}${line}\n\n`;
     },
-    paragraph(text: string): string    { return text + '\n\n'; },
-    strong(text: string): string       { return `{bold}${text}{/bold}`; },
-    em(text: string): string           { return `{underline}${text}{/underline}`; },
-    del(text: string): string          { return `{gray-fg}${text}{/gray-fg}`; },
-    codespan(code: string): string     { return `{cyan-fg}\`${code}\`{/cyan-fg}`; },
+    paragraph(text: string): string { return text + '\n\n'; },
+    strong(text: string): string    { return `{bold}${bc(L.bold)}${text}{/bold}{/}`; },
+    em(text: string): string        { return `{underline}${text}{/underline}`; },
+    del(text: string): string       { return `{gray-fg}${text}{/gray-fg}`; },
+    codespan(code: string): string  { return `${bcBg(L.codeBg)}${bc(L.codeFg)} ${code} {/}{/}`; },
     code(code: string, lang: string | undefined): string {
-      const info  = lang ? `{gray-fg}${lang}{/gray-fg}\n` : '';
-      const bar   = `{gray-fg}${'─'.repeat(50)}{/gray-fg}`;
-      // no tags inside code body - avoids {variable} being parsed as blessed tags
-      const lines = code.split('\n').map(l => `{gray-fg}▌{/gray-fg} ${l}`).join('\n');
-      return `\n${info}${bar}\n${lines}\n${bar}\n\n`;
+      const top   = lang
+        ? `${bc(L.codeFrame)}──{/} ${bc(L.codeLabel)}${lang}{/} ${bc(L.codeFrame)}${'─'.repeat(Math.max(0, 50 - lang.length - 4))}{/}`
+        : `${bc(L.codeFrame)}${'─'.repeat(50)}{/}`;
+      const bot   = `${bc(L.codeFrame)}${'─'.repeat(50)}{/}`;
+      const lines = code.split('\n').map(l => `${bc(L.codeFrame)}│{/} ${l}`).join('\n');
+      return `\n${top}\n${lines}\n${bot}\n\n`;
     },
     blockquote(quote: string): string {
       return quote.split('\n').filter(Boolean)
-        .map(l => `{magenta-fg}▌{/magenta-fg} {gray-fg}${l}{/gray-fg}`)
+        .map(l => `${bc(L.bqBar)}▌{/} ${bc(L.bqText)}${l}{/}`)
         .join('\n') + '\n\n';
     },
     list(body: string, _ordered: boolean): string { return body + '\n'; },
-    listitem(text: string): string { return `  {cyan-fg}•{/cyan-fg} ${text}\n`; },
+    listitem(text: string): string {
+      return `  ${bc(L.list1)}•{/} ${text.trimEnd()}\n`;
+    },
     link(href: string, _title: string | null | undefined, text: string): string {
       const label = text || href;
-      const url   = text && text !== href ? ` {gray-fg}↗ ${href}{/gray-fg}` : '';
-      return `{blue-fg}{underline}${label}{/underline}{/blue-fg}${url}`;
+      const url   = text && text !== href ? ` ${bc(L.hLine)}↗ ${href}{/}` : '';
+      return `{underline}${bc(L.link)}${label}{/underline}{/}${url}`;
     },
     image(_href: string, _title: string | null | undefined, text: string): string {
-      return `{gray-fg}[img: ${text || '…'}]{/gray-fg}`;
+      return `${bc(L.hLine)}[img: ${text || '…'}]{/}`;
     },
     hr(): string {
-      return `\n{gray-fg}${'─'.repeat(60)}{/gray-fg}\n\n`;
+      return `\n${bc(L.rule)}${'─'.repeat(60)}{/}\n\n`;
     },
     br(): string { return '\n'; },
     table(header: string, body: string): string {
-      return `\n${header}{gray-fg}${'─'.repeat(40)}{/gray-fg}\n${body}\n`;
+      return `\n${header}${bc(L.rule)}${'─'.repeat(40)}{/}\n${body}\n`;
     },
     tablerow(content: string): string { return content.trimEnd() + '\n'; },
     tablecell(content: string, flags: { header?: boolean }): string {
-      return (flags.header ? `{bold}${content}{/bold}` : content) + '  ';
+      return (flags.header ? `{bold}${bc(L.h1)}${content}{/bold}{/}` : content) + '  ';
     },
     html(_text: string): string { return ''; },
   },

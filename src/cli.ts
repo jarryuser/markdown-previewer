@@ -1255,6 +1255,10 @@ function createScreen(title: string): blessed.Widgets.Screen {
   return screen;
 }
 
+function stripBlessedTags(s: string): string {
+  return s.replace(/\{[^}]*\}/g, '');
+}
+
 function runTui(previewUrl: string): void {
   const screen = createScreen(basename(argPath));
 
@@ -1262,7 +1266,7 @@ function runTui(previewUrl: string): void {
     left: isDir ? '30%' : 0,
     top: 0,
     right: 0,
-    height: '100%-1',
+    height: '100%-2',
     border: { type: 'line' },
     label: ` ${basename(argPath)} `,
     scrollable: true,
@@ -1274,23 +1278,162 @@ function runTui(previewUrl: string): void {
     style: { border: { fg: 'gray' as any }, focus: { border: { fg: 'cyan' as any } } },
   } as any);
 
-  const hintDir  = ' [Tab/Esc] switch  [j/k] nav  [l/Enter] open  [h] close dir  [/] search  [b] browser  [q] quit';
-  const hintFile = ' [j/k] scroll  [b] open in browser  [q] quit';
-
   const statusBar = blessed.box({
-    bottom: 0, height: 1, left: 0, right: 0, tags: false,
-    content: isDir ? hintDir : hintFile,
+    bottom: 0, height: 2, left: 0, right: 0, tags: false,
     style: { bg: 'blue', fg: 'white' },
   });
 
   screen.append(previewBox);
   screen.append(statusBar);
 
+  // shared modal prompt for search / filter
+  const prompt = (blessed as any).prompt({
+    parent: screen, top: 'center', left: 'center',
+    width: '50%', height: 'shrink',
+    border: 'line', label: ' Search ', tags: false,
+    style: { border: { fg: 'cyan' } },
+  });
+
+  // help overlay
+  const helpContent = [
+    ' {bold}{cyan-fg}Navigation{/}',
+    '   j / ↓        scroll down / next item in tree',
+    '   k / ↑        scroll up / prev item in tree',
+    '   g / Home     top of preview',
+    '   G / End      bottom of preview',
+    '   f / PgDn     page down',
+    '   b / PgUp     page up',
+    '',
+    ' {bold}{cyan-fg}Tree  (dir mode){/}',
+    '   l / Enter    open file or expand folder',
+    '   h            collapse folder or jump to parent',
+    '   /            filter files by name',
+    '   Tab          switch to preview',
+    '',
+    ' {bold}{cyan-fg}Preview{/}',
+    '   /            search in preview',
+    '   n            next match',
+    '   N            previous match',
+    '   Esc / Tab    switch to tree',
+    '',
+    ' {bold}{cyan-fg}File{/}',
+    '   t            table of contents',
+    '   e            open in external editor  ($EDITOR)',
+    '   b            open in browser',
+    '',
+    ' {bold}{cyan-fg}General{/}',
+    '   ?            this help',
+    '   q / Ctrl+C   quit',
+  ].join('\n');
+
+  const helpBox = blessed.box({
+    top: 'center', left: 'center',
+    width: '56', height: '90%',
+    border: { type: 'line' },
+    label: ' Help  [q/?/Esc] close ',
+    scrollable: true,
+    tags: true,
+    padding: { left: 1, right: 1, top: 0, bottom: 0 },
+    style: { border: { fg: 'cyan' as any } },
+    content: helpContent,
+    hidden: true,
+  } as any);
+  screen.append(helpBox);
+
+  // TOC overlay
+  const tocList = blessed.list({
+    top: 'center', left: 'center',
+    width: '60%', height: '70%',
+    border: { type: 'line' },
+    label: ' Table of Contents  [Esc/q] close ',
+    scrollable: true,
+    keys: false,
+    mouse: true,
+    style: {
+      item: {},
+      selected: { bg: 'blue', fg: 'white', bold: true },
+      border: { fg: 'cyan' as any },
+    },
+    hidden: true,
+  } as any) as blessed.Widgets.ListElement;
+  screen.append(tocList);
+
+  // search state
+  let searchMatches: number[] = [];
+  let searchIdx = 0;
+  let lastSearch = '';
+
+  function doSearch(query: string): void {
+    lastSearch = query;
+    const content = stripBlessedTags((previewBox as any).getContent ? (previewBox as any).getContent() : '');
+    const lines = content.split('\n');
+    const q = query.toLowerCase();
+    searchMatches = lines.reduce<number[]>((acc, l, i) => { if (l.toLowerCase().includes(q)) acc.push(i); return acc; }, []);
+    searchIdx = 0;
+    if (searchMatches.length) (previewBox as any).scrollTo(searchMatches[0]);
+    const label = query
+      ? ` ${basename(tuiCurrentPath || argPath)} — ${searchMatches.length} match${searchMatches.length !== 1 ? 'es' : ''} `
+      : ` ${basename(tuiCurrentPath || argPath)} `;
+    previewBox.setLabel(label);
+    screen.render();
+  }
+
+  function openEditor(): void {
+    const file = tuiCurrentPath ? resolve(argPath, tuiCurrentPath) : argPath;
+    const ed = process.env.EDITOR || process.env.VISUAL || 'nano';
+    (screen as any).exec(ed, [file], {}, () => { screen.render(); });
+  }
+
+  function openToc(): void {
+    const file = tuiCurrentPath ? resolve(argPath, tuiCurrentPath) : argPath;
+    let md = '';
+    try { md = readFileSync(file, 'utf-8'); } catch { return; }
+    const entries: { label: string; text: string }[] = [];
+    for (const line of md.split('\n')) {
+      const m = line.match(/^(#{1,6})\s+(.+)/);
+      if (m) entries.push({ label: '  '.repeat(m[1].length - 1) + m[2].trim(), text: m[2].trim() });
+    }
+    if (!entries.length) return;
+    (tocList as any).setItems(entries.map(e => e.label));
+    (tocList as any).select(0);
+    tocList.show();
+    tocList.focus();
+    screen.render();
+
+    tocList.once('select', (_: unknown, idx: number) => {
+      const heading = entries[idx]?.text;
+      tocList.hide();
+      previewBox.focus();
+      if (heading) {
+        const content = stripBlessedTags((previewBox as any).getContent ? (previewBox as any).getContent() : '');
+        const line = content.split('\n').findIndex(l => l.includes(heading));
+        if (line >= 0) (previewBox as any).scrollTo(line);
+      }
+      screen.render();
+    });
+  }
+
+  let overlayOpen = false;
+  helpBox.on('show', () => { overlayOpen = true; });
+  helpBox.on('hide', () => { overlayOpen = false; });
+  tocList.on('show', () => { overlayOpen = true; });
+  tocList.on('hide', () => { overlayOpen = false; });
+
+  function updateStatusBar(inTree: boolean): void {
+    const previewKeys = ' [j/k] scroll  [/] search  [n/N] match  [t] TOC  [e] edit  [b] browser  [?] help  [q] quit';
+    const treeKeys    = ' [j/k] nav  [l] open  [h] close  [/] filter  [Tab] preview  [e] edit  [?] help  [q] quit';
+    const fileKeys    = ' [j/k] scroll  [/] search  [n/N] match  [t] TOC  [e] edit  [g/G] top/bot  [b] browser  [?] help  [q] quit';
+    statusBar.setContent(isDir ? (inTree ? treeKeys : previewKeys) : fileKeys);
+    screen.render();
+  }
+
+  // ── load preview ───────────────────────────────────────────────────────────
   function loadPreview(filePath: string, keepScroll = false): void {
     tuiCurrentPath = filePath;
     const fullPath = isDir ? resolve(argPath, filePath) : filePath;
     const pos = keepScroll ? ((previewBox as any).childBase ?? 0) : 0;
     gBlessedWidth = Math.max(20, ((previewBox as any).width as number) - 7);
+    searchMatches = [];
     try {
       const md = readFileSync(fullPath, 'utf-8');
       previewBox.setContent(renderBlessed(md));
@@ -1307,25 +1450,75 @@ function runTui(previewUrl: string): void {
     else if (changedPath === tuiCurrentPath) loadPreview(tuiCurrentPath, true);
   };
 
+  // ── global key handlers ────────────────────────────────────────────────────
+  screen.key(['q', 'C-c'], () => {
+    if (overlayOpen) { helpBox.hide(); tocList.hide(); previewBox.focus(); screen.render(); return; }
+    process.exit(0);
+  });
+  screen.key('escape', () => {
+    if (overlayOpen) { helpBox.hide(); tocList.hide(); previewBox.focus(); screen.render(); }
+  });
+  screen.key('?', () => {
+    if (overlayOpen) return;
+    helpBox.show(); helpBox.focus(); screen.render();
+  });
+  screen.key('t', () => {
+    if (overlayOpen) return;
+    openToc();
+  });
+  screen.key('e', () => {
+    if (overlayOpen) return;
+    openEditor();
+  });
+  screen.key('b', () => {
+    if (overlayOpen) return;
+    openBrowser(previewUrl);
+  });
+
+  // ── file mode (no tree) ────────────────────────────────────────────────────
   if (!isDir) {
-    // file mode - all keys on screen level
-    screen.key(['j', 'down'], () => { (previewBox as any).scroll(3);  screen.render(); });
-    screen.key(['k', 'up'],   () => { (previewBox as any).scroll(-3); screen.render(); });
-    screen.key(['q', 'C-c'],  () => process.exit(0));
-    screen.key('b',           () => openBrowser(previewUrl));
+    updateStatusBar(false);
+
+    screen.key(['j', 'down'], () => { if (!overlayOpen) { (previewBox as any).scroll(3);  screen.render(); } });
+    screen.key(['k', 'up'],   () => { if (!overlayOpen) { (previewBox as any).scroll(-3); screen.render(); } });
+    screen.key(['g', 'home'], () => { if (!overlayOpen) { (previewBox as any).scrollTo(0); screen.render(); } });
+    screen.key(['S-g', 'end'],() => { if (!overlayOpen) { (previewBox as any).scrollTo((previewBox as any).getScrollHeight()); screen.render(); } });
+    screen.key(['f', 'pagedown'], () => { if (!overlayOpen) { (previewBox as any).scroll(Math.floor((screen.height as number) * 0.8)); screen.render(); } });
+    screen.key('/', () => {
+      if (overlayOpen) return;
+      prompt.input('Search:', lastSearch, (err: unknown, val: string) => {
+        if (!err && val) doSearch(val);
+        previewBox.focus(); screen.render();
+      });
+    });
+    screen.key('n', () => {
+      if (!overlayOpen && searchMatches.length) {
+        searchIdx = (searchIdx + 1) % searchMatches.length;
+        (previewBox as any).scrollTo(searchMatches[searchIdx]);
+        screen.render();
+      }
+    });
+    screen.key('S-n', () => {
+      if (!overlayOpen && searchMatches.length) {
+        searchIdx = (searchIdx - 1 + searchMatches.length) % searchMatches.length;
+        (previewBox as any).scrollTo(searchMatches[searchIdx]);
+        screen.render();
+      }
+    });
+
     loadPreview(argPath);
     previewBox.focus();
     screen.render();
     return;
   }
 
-  // directory mode: tree list on the left
+  // ── directory mode: tree list on the left ─────────────────────────────────
   const treeList = blessed.list({
-    left: 0, top: 0, width: '30%', height: '100%-1',
+    left: 0, top: 0, width: '30%', height: '100%-2',
     border: { type: 'line' },
     label: ` ${basename(argPath)} `,
     scrollable: true,
-    keys: false, // we handle all keys at screen level
+    keys: false,
     mouse: true,
     style: {
       item: {},
@@ -1334,7 +1527,6 @@ function runTui(previewUrl: string): void {
       focus: { border: { fg: 'cyan' as any } },
     },
   } as any) as blessed.Widgets.ListElement;
-
   screen.append(treeList);
 
   tuiItems = buildTuiItems(buildTree(argPath, argPath), 0);
@@ -1343,7 +1535,6 @@ function runTui(previewUrl: string): void {
   const first = tuiItems.find(i => !i.isDir && i.path);
   if (first?.path) loadPreview(first.path);
 
-  // mouse click on file opens it
   treeList.on('select', (_: unknown, idx: number) => {
     const item = tuiItems[idx];
     if (!item) return;
@@ -1351,32 +1542,18 @@ function runTui(previewUrl: string): void {
     else if (item.path) { loadPreview(item.path); previewBox.focus(); }
   });
 
-  // track which pane is active
   let inTree = true;
-  treeList.on('focus',   () => { inTree = true; });
-  previewBox.on('focus', () => { inTree = false; });
-
-  // search prompt
-  const prompt = (blessed as any).prompt({
-    parent: screen, top: 'center', left: 'center',
-    width: '50%', height: 'shrink',
-    border: 'line', label: ' Search ', tags: false,
-    style: { border: { fg: 'cyan' } },
-  });
-
-  // all keyboard handling at screen level - fires regardless of which widget has focus
-  screen.key(['q', 'C-c'], () => process.exit(0));
-  screen.key('b',          () => openBrowser(previewUrl));
+  treeList.on('focus',   () => { inTree = true;  updateStatusBar(true);  });
+  previewBox.on('focus', () => { inTree = false; updateStatusBar(false); });
+  updateStatusBar(true);
 
   screen.key('tab', () => {
+    if (overlayOpen) return;
     if (inTree) previewBox.focus(); else treeList.focus();
     screen.render();
   });
-  screen.key('escape', () => {
-    if (!inTree) { treeList.focus(); screen.render(); }
-  });
-
   screen.key(['j', 'down'], () => {
+    if (overlayOpen) return;
     if (inTree) {
       const cur = (treeList as any).selected as number;
       (treeList as any).select(Math.min(cur + 1, tuiItems.length - 1));
@@ -1386,6 +1563,7 @@ function runTui(previewUrl: string): void {
     screen.render();
   });
   screen.key(['k', 'up'], () => {
+    if (overlayOpen) return;
     if (inTree) {
       const cur = (treeList as any).selected as number;
       (treeList as any).select(Math.max(cur - 1, 0));
@@ -1394,45 +1572,61 @@ function runTui(previewUrl: string): void {
     }
     screen.render();
   });
+  screen.key(['g', 'home'], () => { if (!overlayOpen && !inTree) { (previewBox as any).scrollTo(0); screen.render(); } });
+  screen.key(['S-g', 'end'], () => { if (!overlayOpen && !inTree) { (previewBox as any).scrollTo((previewBox as any).getScrollHeight()); screen.render(); } });
+  screen.key(['f', 'pagedown'], () => { if (!overlayOpen && !inTree) { (previewBox as any).scroll(Math.floor((screen.height as number) * 0.8)); screen.render(); } });
 
   screen.key(['l', 'enter'], () => {
-    if (!inTree) return;
+    if (overlayOpen || !inTree) return;
     const idx = (treeList as any).selected as number;
     const item = tuiItems[idx];
     if (!item) return;
     if (item.isDir) tuiToggle(idx, treeList, screen);
     else if (item.path) { loadPreview(item.path); previewBox.focus(); }
   });
-
   screen.key('h', () => {
-    if (!inTree) return;
+    if (overlayOpen || !inTree) return;
     const idx = (treeList as any).selected as number;
     const item = tuiItems[idx];
     if (!item) return;
     if (item.isDir && item.expanded) { tuiToggle(idx, treeList, screen); return; }
     for (let i = idx - 1; i >= 0; i--) {
       if (tuiItems[i].isDir && tuiItems[i].depth < item.depth) {
-        (treeList as any).select(i);
-        screen.render();
-        break;
+        (treeList as any).select(i); screen.render(); break;
       }
     }
   });
-
   screen.key('/', () => {
-    if (!inTree) return;
-    prompt.input('Filter files:', '', (err: unknown, value: string) => {
-      if (!err && value) {
-        const q = value.toLowerCase();
-        const match = tuiItems.findIndex(i => !i.isDir && i.label.toLowerCase().includes(q));
-        if (match >= 0) {
-          (treeList as any).select(match);
-          if (tuiItems[match].path) loadPreview(tuiItems[match].path!);
+    if (overlayOpen) return;
+    if (inTree) {
+      prompt.input('Filter files:', '', (err: unknown, value: string) => {
+        if (!err && value) {
+          const q = value.toLowerCase();
+          const match = tuiItems.findIndex(i => !i.isDir && i.label.toLowerCase().includes(q));
+          if (match >= 0) { (treeList as any).select(match); if (tuiItems[match].path) loadPreview(tuiItems[match].path!); }
         }
-      }
-      treeList.focus();
+        treeList.focus(); screen.render();
+      });
+    } else {
+      prompt.input('Search:', lastSearch, (err: unknown, val: string) => {
+        if (!err && val) doSearch(val);
+        previewBox.focus(); screen.render();
+      });
+    }
+  });
+  screen.key('n', () => {
+    if (!overlayOpen && !inTree && searchMatches.length) {
+      searchIdx = (searchIdx + 1) % searchMatches.length;
+      (previewBox as any).scrollTo(searchMatches[searchIdx]);
       screen.render();
-    });
+    }
+  });
+  screen.key('S-n', () => {
+    if (!overlayOpen && !inTree && searchMatches.length) {
+      searchIdx = (searchIdx - 1 + searchMatches.length) % searchMatches.length;
+      (previewBox as any).scrollTo(searchMatches[searchIdx]);
+      screen.render();
+    }
   });
 
   treeList.focus();

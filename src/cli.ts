@@ -365,15 +365,34 @@ function isWideChar(cp: number): boolean {
 
 const blessedUnicode = (blessed as any).unicode;
 
-// Visible width of a string for a given render target.
-// blessed positions cells with its own width model (every emoji = 1 cell) and
-// repositions absolutely, so matching blessed.unicode keeps its grid aligned.
-// In raw ANSI mode the terminal advances sequentially, so emoji must count as 2.
-function visibleLen(s: string, target: 'ansi' | 'blessed'): number {
+// blessed counts every emoji as 1 cell while the terminal draws them 2 wide,
+// drifting table borders. Patch its width table so blessed agrees with the
+// terminal: emoji = 2, U+FE0F = +1 (so base+selector clusters total 2). The
+// output stage then "eats" the placeholder space we add in insertWidePlaceholders.
+function patchBlessedWidth(): void {
+  const u = blessedUnicode;
+  if (!u || u.__mdpPatched) return;
+  const orig = u.charWidth.bind(u);
+  u.charWidth = function (str: string | number, i?: number): number {
+    const idx = i || 0;
+    if (typeof str === 'number') {
+      if (str === 0xFE0F) return 1;
+      return isWideChar(str) ? 2 : orig(str, idx);
+    }
+    const cp = u.codePointAt(str, idx) as number;
+    if (cp === 0xFE0F) return 1;
+    const baseLen = cp > 0xFFFF ? 2 : 1;
+    if (str.charCodeAt(idx + baseLen) === 0xFE0F) return 2; // emoji-presentation cluster
+    return isWideChar(cp) ? 2 : orig(str, idx);
+  };
+  u.__mdpPatched = true;
+}
+patchBlessedWidth();
+
+// Width in terminal columns (emoji = 2). Single model for both renderers now
+// that blessed's charWidth has been patched to match the terminal.
+function visibleLen(s: string): number {
   const plain = s.replace(/\x1b\[[^m]*m/g, '').replace(/\{[^}]*\}/g, '');
-  if (target === 'blessed' && blessedUnicode?.strWidth) {
-    return blessedUnicode.strWidth(plain);
-  }
   let len = 0; let prevW = 0;
   for (const char of [...plain]) {               // spread for proper surrogate-pair iteration
     const cp = char.codePointAt(0) ?? 0;
@@ -385,14 +404,32 @@ function visibleLen(s: string, target: 'ansi' | 'blessed'): number {
   return len;
 }
 
+// Inserts a placeholder space after each wide emoji cluster so blessed's
+// "eat next cell" behaviour (triggered by the patched charWidth==2) consumes
+// the placeholder instead of real content, keeping the grid aligned.
+function insertWidePlaceholders(s: string): string {
+  let out = ''; let i = 0;
+  while (i < s.length) {
+    if (s[i] === '{') { const e = s.indexOf('}', i); if (e !== -1) { out += s.slice(i, e + 1); i = e + 1; continue; } }
+    const cp = s.codePointAt(i) ?? 0;
+    const baseLen = cp > 0xFFFF ? 2 : 1;
+    const hasSelector = s.charCodeAt(i + baseLen) === 0xFE0F;
+    const clusterLen = baseLen + (hasSelector ? 1 : 0);
+    out += s.slice(i, i + clusterLen);
+    if (isWideChar(cp) || hasSelector) out += ' ';
+    i += clusterLen;
+  }
+  return out;
+}
+
 // Truncates tagged content to maxW visible cells, appending '…' if cut.
-function truncateVisible(s: string, maxW: number, target: 'ansi' | 'blessed'): string {
-  if (visibleLen(s, target) <= maxW) return s;
+function truncateVisible(s: string, maxW: number): string {
+  if (visibleLen(s) <= maxW) return s;
   let vis = 0; let out = ''; let i = 0;
   for (const ch of [...s]) {
     if (ch === '{') { const e = s.indexOf('}', i); if (e !== -1) { out += s.slice(i, e + 1); i = e + 1; continue; } }
     if (ch === '\x1b') { const e = s.indexOf('m', i); if (e !== -1) { out += s.slice(i, e + 1); i = e + 1; continue; } }
-    const w = visibleLen(ch, target);
+    const w = visibleLen(ch);
     if (vis + w > maxW - 1) break;
     out += ch; vis += w; i += ch.length;
   }
@@ -411,7 +448,7 @@ function formatTable(rawHeader: string, rawBody: string, target: 'ansi' | 'bless
   const cols      = Math.max(hdrCells.length, ...bodyCells.map(r => r.length));
 
   let widths = Array.from({ length: cols }, (_, i) =>
-    Math.max(3, visibleLen(hdrCells[i]?.t ?? '', target), ...bodyCells.map(r => visibleLen(r[i]?.t ?? '', target)))
+    Math.max(3, visibleLen(hdrCells[i]?.t ?? ''), ...bodyCells.map(r => visibleLen(r[i]?.t ?? '')))
   );
 
   // shrink columns proportionally if table is wider than available space
@@ -424,8 +461,8 @@ function formatTable(rawHeader: string, rawBody: string, target: 'ansi' | 'bless
   }
 
   const pad = (s: string, w: number) => {
-    const t = truncateVisible(s, w, target);
-    return t + ' '.repeat(Math.max(0, w - visibleLen(t, target)));
+    const t = truncateVisible(s, w);
+    return t + ' '.repeat(Math.max(0, w - visibleLen(t)));
   };
   const border = (l: string, m: string, r: string) =>
     fr(l + widths.map(w => '─'.repeat(w + 2)).join(m) + r);
@@ -451,7 +488,7 @@ function renderAnsi(md: string): string {
 }
 
 function renderBlessed(md: string): string {
-  return blessedMarked.parse(stripFrontmatter(md)) as string;
+  return insertWidePlaceholders(blessedMarked.parse(stripFrontmatter(md)) as string);
 }
 
 function escapeRegex(s: string): string {

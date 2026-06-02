@@ -287,6 +287,7 @@ ansiMarked.use({
       return (flags.header ? '\x00' : '') + content + '\x01';
     },
     html(_text: string): string { return ''; },
+    text(text: string): string { return decodeEntities(text); },
   },
 });
 
@@ -342,11 +343,36 @@ blessedMarked.use({
       return (flags.header ? '\x00' : '') + content + '\x01';
     },
     html(_text: string): string { return ''; },
+    text(text: string): string { return decodeEntities(text); },
   },
 });
 
+function isWideChar(cp: number): boolean {
+  return (
+    cp > 0xFFFF ||                               // all supplementary (emoji, etc.)
+    (cp >= 0x1100 && cp <= 0x115F) ||            // Hangul Jamo
+    (cp >= 0x2600 && cp <= 0x26FF) ||            // Misc symbols  ⚡⭐ etc.
+    (cp >= 0x2700 && cp <= 0x27BF) ||            // Dingbats  ✏ ✅ etc.
+    (cp >= 0x2B50 && cp <= 0x2B55) ||            // Stars / circle
+    (cp >= 0x2E80 && cp <= 0x303E) ||            // CJK radicals
+    (cp >= 0x3040 && cp <= 0x33FF) ||            // Japanese / Chinese
+    (cp >= 0xAC00 && cp <= 0xD7FF) ||            // Hangul syllables
+    (cp >= 0xF900 && cp <= 0xFAFF) ||            // CJK compat
+    (cp >= 0xFF00 && cp <= 0xFF60) ||            // Fullwidth latin
+    (cp >= 0xFFE0 && cp <= 0xFFE6)               // Fullwidth signs
+  );
+}
+
 function visibleLen(s: string): number {
-  return s.replace(/\x1b\[[^m]*m/g, '').replace(/\{[^}]*\}/g, '').length;
+  const plain = s.replace(/\x1b\[[^m]*m/g, '').replace(/\{[^}]*\}/g, '');
+  let len = 0;
+  for (const char of [...plain]) {               // spread for proper surrogate-pair iteration
+    const cp = char.codePointAt(0) ?? 0;
+    if (cp === 0xFE0F || cp === 0xFE0E || cp === 0x200D ||
+        (cp >= 0x200B && cp <= 0x200F)) continue; // zero-width / variation selectors
+    len += isWideChar(cp) ? 2 : 1;
+  }
+  return len;
 }
 
 // Truncates tagged content to maxW visible characters, appending '…' if cut.

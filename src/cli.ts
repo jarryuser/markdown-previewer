@@ -384,11 +384,11 @@ function patchBlessedWidth(): void {
   u.charWidth = function (str: string | number, i?: number): number {
     const idx = i || 0;
     if (typeof str === 'number') {
-      if (str === 0xFE0F) return 1;
+      if (str === 0xFE0F) return 0;
       return isWideChar(str) ? 2 : orig(str, idx);
     }
     const cp = u.codePointAt(str, idx) as number;
-    if (cp === 0xFE0F) return 1;
+    if (cp === 0xFE0F) return 0;
     const baseLen = cp > 0xFFFF ? 2 : 1;
     if (str.charCodeAt(idx + baseLen) === 0xFE0F) return 2; // emoji-presentation cluster
     return isWideChar(cp) ? 2 : orig(str, idx);
@@ -423,7 +423,14 @@ function insertWidePlaceholders(s: string): string {
     const baseLen = cp > 0xFFFF ? 2 : 1;
     const hasSelector = s.charCodeAt(i + baseLen) === 0xFE0F;
     const clusterLen = baseLen + (hasSelector ? 1 : 0);
-    out += s.slice(i, i + clusterLen);
+    // For supplementary emoji + FE0F: strip FE0F so blessed's raw char counter
+    // (used in _wrapContent) doesn't overcount. Supplementary emoji are emoji
+    // by default and don't need FE0F for emoji presentation.
+    if (cp > 0xFFFF && hasSelector) {
+      out += s.slice(i, i + baseLen);
+    } else {
+      out += s.slice(i, i + clusterLen);
+    }
     if (isWideChar(cp) || hasSelector) out += ' ';
     i += clusterLen;
   }

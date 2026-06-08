@@ -57,6 +57,7 @@ const fontDecBtn = document.getElementById('font-dec-btn') as HTMLButtonElement;
 const fontIncBtn = document.getElementById('font-inc-btn') as HTMLButtonElement;
 const vimBtn = document.getElementById('vim-btn') as HTMLButtonElement;
 const fullscreenBtn = document.getElementById('fullscreen-btn') as HTMLButtonElement;
+const printBtn = document.getElementById('print-btn') as HTMLButtonElement;
 const findBtn = document.getElementById('find-btn') as HTMLButtonElement;
 const tocBtn = document.getElementById('toc-btn') as HTMLButtonElement;
 const tocPanel = document.getElementById('toc') as HTMLElement;
@@ -66,6 +67,13 @@ const editorContainer = document.getElementById('editor') as HTMLElement;
 const STORAGE_KEY = 'md-content';
 const FONT_SIZE_KEY = 'md-font-size';
 const VIM_KEY = 'md-vim';
+const THEME_KEY = 'md-theme';
+
+// available color schemes - 'dark' and 'nord' use the dark editor theme and mermaid palette
+const THEMES = ['light', 'dark', 'sepia', 'nord'] as const;
+type Theme = typeof THEMES[number];
+const THEME_LABELS: Record<Theme, string> = { light: 'Light', dark: 'Dark', sepia: 'Sepia', nord: 'Nord' };
+function isDarkTheme(t: Theme): boolean { return t === 'dark' || t === 'nord'; }
 
 const INITIAL = `# Markdown Previewer
 
@@ -101,9 +109,20 @@ console.log(greet('World'));
 > Start editing to see your changes appear here in real time.
 `;
 
-// maps local://N placeholders to blob URLs so dropped images stay short in the editor
+// maps local://N placeholders to blob URLs so dropped/pasted images stay short in the editor
 const imageStore = new Map<string, string>();
 let imageId = 0;
+
+// stores image files and inserts short local:// placeholders at the cursor
+function insertImageFiles(files: File[]): void {
+  const snippets = files.map(file => {
+    const id = `local://${imageId++}`;
+    imageStore.set(id, URL.createObjectURL(file));
+    const alt = file.name.replace(/\.[^.]+$/, '') || 'image';
+    return `![${alt}](${id})`;
+  });
+  editorView.dispatch(editorView.state.replaceSelection(snippets.join('\n')));
+}
 
 function buildToc(): void {
   const headings = Array.from(preview.querySelectorAll('h1, h2, h3, h4, h5, h6'));
@@ -203,7 +222,10 @@ function insertLink(view: EditorView): boolean {
 }
 
 let debounceTimer = 0;
-let dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+const storedTheme = localStorage.getItem(THEME_KEY);
+let theme: Theme = (THEMES as readonly string[]).includes(storedTheme ?? '')
+  ? (storedTheme as Theme)
+  : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 const themeCompartment = new Compartment();
 const wrapCompartment = new Compartment();
 const vimCompartment = new Compartment();
@@ -215,7 +237,7 @@ const editorView = new EditorView({
   extensions: [
     basicSetup,
     markdown(),
-    themeCompartment.of(dark ? oneDark : []),
+    themeCompartment.of(isDarkTheme(theme) ? oneDark : []),
     wrapCompartment.of(EditorView.lineWrapping),
     vimCompartment.of(vimEnabled ? vim() : []),
     // Prec.highest ensures our keys take priority over defaultKeymap in basicSetup
@@ -254,13 +276,18 @@ const editorView = new EditorView({
         const files = Array.from(e.dataTransfer?.files ?? [])
           .filter(f => f.type.startsWith('image/'));
         if (files.length === 0) return false;
-        const snippets = files.map(file => {
-          const id = `local://${imageId++}`;
-          imageStore.set(id, URL.createObjectURL(file));
-          const alt = file.name.replace(/\.[^.]+$/, '');
-          return `![${alt}](${id})`;
-        });
-        editorView.dispatch(editorView.state.replaceSelection(snippets.join('\n')));
+        insertImageFiles(files);
+        return true;
+      },
+      // paste images from clipboard - same local:// storage as drag & drop
+      paste: e => {
+        const files = Array.from(e.clipboardData?.items ?? [])
+          .filter(item => item.type.startsWith('image/'))
+          .map(item => item.getAsFile())
+          .filter((f): f is File => f !== null);
+        if (files.length === 0) return false;
+        e.preventDefault();
+        insertImageFiles(files);
         return true;
       },
     }),
@@ -327,18 +354,19 @@ exportBtn.addEventListener('click', () => {
 });
 
 function applyTheme(): void {
-  document.documentElement.dataset['theme'] = dark ? 'dark' : 'light';
-  themeBtn.textContent = dark ? 'Light' : 'Dark';
+  document.documentElement.dataset['theme'] = theme;
+  themeBtn.textContent = THEME_LABELS[theme];
+  localStorage.setItem(THEME_KEY, theme);
   editorView.dispatch({
-    effects: themeCompartment.reconfigure(dark ? oneDark : []),
+    effects: themeCompartment.reconfigure(isDarkTheme(theme) ? oneDark : []),
   });
   // re-initialize mermaid with new theme and re-render diagrams
-  getMermaid()?.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default' });
+  getMermaid()?.initialize({ startOnLoad: false, theme: isDarkTheme(theme) ? 'dark' : 'default' });
   if (preview.querySelector('.mermaid svg')) render(editorView.state.doc.toString());
 }
 
 themeBtn.addEventListener('click', () => {
-  dark = !dark;
+  theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
   applyTheme();
 });
 
@@ -410,6 +438,8 @@ document.addEventListener('fullscreenchange', () => {
   fullscreenBtn.textContent = document.fullscreenElement ? 'Exit ⛶' : 'Full ⛶';
 });
 
+printBtn.addEventListener('click', () => window.print());
+
 // synchronized scrolling - tracks which pane is the scroll source to avoid feedback loops
 // without throttling user events (which caused the jerky feel)
 let syncEnabled = false;
@@ -464,7 +494,7 @@ wrapBtn.classList.add('active');
 vimBtn.classList.toggle('active', vimEnabled);
 // initialize mermaid after defer script has loaded
 window.addEventListener('load', () => {
-  getMermaid()?.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default' });
+  getMermaid()?.initialize({ startOnLoad: false, theme: isDarkTheme(theme) ? 'dark' : 'default' });
 });
 render(localStorage.getItem(STORAGE_KEY) ?? INITIAL);
 

@@ -38,6 +38,40 @@
   --logo-text:  #ffffff;
 }
 
+[data-theme="sepia"] {
+  --bg:         #f4ecd8;
+  --bg-toolbar: #ece0c8;
+  --bg-editor:  #f4ecd8;
+  --bg-preview: #f4ecd8;
+  --border:     #d8c8a8;
+  --divider:    #d8c8a8;
+  --text:       #5b4636;
+  --text-muted: #8a7458;
+  --accent:     #a0522d;
+  --btn-bg:     #ece0c8;
+  --btn-border: #d8c8a8;
+  --btn-hover:  #e0d0ac;
+  --logo-bg:    #a0522d;
+  --logo-text:  #fdf6e8;
+}
+
+[data-theme="nord"] {
+  --bg:         #2e3440;
+  --bg-toolbar: #3b4252;
+  --bg-editor:  #2e3440;
+  --bg-preview: #2e3440;
+  --border:     #4c566a;
+  --divider:    #4c566a;
+  --text:       #e5e9f0;
+  --text-muted: #9aa5b1;
+  --accent:     #88c0d0;
+  --btn-bg:     #3b4252;
+  --btn-border: #4c566a;
+  --btn-hover:  #434c5e;
+  --logo-bg:    #88c0d0;
+  --logo-text:  #2e3440;
+}
+
 /* ── Base ──────────────────────────────────────────────────────────────────── */
 html, body {
   height: 100%;
@@ -394,6 +428,22 @@ button.active:hover { opacity: .85; }
 [data-theme="dark"] .hljs-attr     { color: #79c0ff; }
 [data-theme="dark"] .hljs-type     { color: #79c0ff; }
 
+[data-theme="nord"] .hljs {
+  background: transparent;
+  color: #e5e9f0;
+}
+
+[data-theme="nord"] .hljs-keyword  { color: #81a1c1; }
+[data-theme="nord"] .hljs-string   { color: #a3be8c; }
+[data-theme="nord"] .hljs-comment  { color: #616e88; }
+[data-theme="nord"] .hljs-number   { color: #b48ead; }
+[data-theme="nord"] .hljs-function { color: #88c0d0; }
+[data-theme="nord"] .hljs-title    { color: #88c0d0; }
+[data-theme="nord"] .hljs-params   { color: #e5e9f0; }
+[data-theme="nord"] .hljs-built_in { color: #d08770; }
+[data-theme="nord"] .hljs-attr     { color: #8fbcbb; }
+[data-theme="nord"] .hljs-type     { color: #8fbcbb; }
+
 /* ── Nav bar (CLI dir mode + FSA overlay) ──────────────────────────────────── */
 .nav-btn { padding: 2px 8px; font-size: 12px; }
 
@@ -498,4 +548,37 @@ button.active:hover { opacity: .85; }
   overflow-x: auto;
 }
 
-[data-theme="dark"] .katex { color: var(--text); }
+[data-theme="dark"] .katex,
+[data-theme="nord"] .katex { color: var(--text); }
+
+/* ── Print / PDF export ────────────────────────────────────────────────────── */
+@media print {
+  .toolbar, #editor, #divider, #toc, #fsa-overlay {
+    display: none !important;
+  }
+
+  #panes {
+    display: block;
+    height: auto;
+  }
+
+  #preview-pane {
+    display: block;
+    height: auto;
+    overflow: visible;
+  }
+
+  #preview {
+    max-width: 760px;
+    margin: 0 auto;
+    overflow: visible;
+    color: #000;
+    background: #fff;
+  }
+
+  .prose, .prose * { color: #000 !important; }
+  .prose a { text-decoration: underline; }
+  .prose pre, .prose code, .prose blockquote, .prose th {
+    background: #f6f8fa !important;
+  }
+}

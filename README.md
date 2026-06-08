@@ -40,11 +40,12 @@ The project also ships a small CLI (`mdp`) that renders any local `.md` file in 
 | ∑ | **Math support** | KaTeX renders `$inline$` and `$$block$$` formulas |
 | 💾 | **Persistent content** | Editor content is saved to localStorage and restored on reload |
 | ✅ | **GitHub-style task lists** | Custom checkboxes, no bullet points - matches GitHub's rendering |
-| 🖼️ | **Image drag & drop** | Drop an image onto the editor to insert it; stored as a short `local://N` reference, not base64 |
+| 🖼️ | **Image drag & drop / paste** | Drop an image onto the editor or paste with `Ctrl+V` to insert it; stored as a short `local://N` reference, not base64 |
 | ↔️ | **Resizable panes** | Drag the divider; ratio is clamped between 20% and 80% |
 | 📊 | **Word & character counter** | Updates live in the toolbar |
 | 📋 | **Copy to clipboard** | Copies raw Markdown with one click |
-| 🌙 | **Light / dark theme** | Follows system preference by default; toggle in the toolbar |
+| 🌙 | **Custom themes** | Light, Dark, Sepia and Nord; Theme button cycles between them and the choice persists across reloads |
+| 🖨️ | **Print / PDF export** | Print button opens the browser print dialog with print-friendly styles that show only the rendered preview |
 | ⌨️ | **Tab key** | Inserts two spaces instead of moving focus |
 | 📄 | **GitHub Flavored Markdown** | Tables, strikethrough, task lists, autolinks |
 | 🔍 | **Find & replace** | Toolbar button or `Mod+F` opens CodeMirror's search panel |
@@ -161,8 +162,6 @@ npm run build     # production build -> dist/
 
 ## Roadmap
 
-### Done
-
 - [x] **CLI viewer** (`mdp`) - opens any `.md` file in the browser with live reload; local images are served from the file's directory
 - [x] **Image drag & drop** - drop images onto the editor; inserted as short `local://N` placeholders instead of base64
 - [x] **GitHub-style task lists** - custom checkboxes with no bullet points, matching GitHub's rendering
@@ -192,16 +191,9 @@ npm run build     # production build -> dist/
 - [x] **Breadcrumb** - the current file path is shown above the preview in directory mode; each segment is a clickable link
 - [x] **Terminal output** (`-t` / `--terminal`) - renders any `.md` file to stdout with ANSI colors; headings, bold, italic, code blocks, tables; pipeable to `less`
 - [x] **TUI mode** (`--tui`) - interactive split-pane in the terminal; file tree on the left, preview on the right; j/k navigation, `/` search, `b` to open in browser; auto-refreshes on file save
-
-### Planned
-
-**Web editor**
-
-- [ ] **Image paste from clipboard** - paste images with `Ctrl+V`, stored the same way as drag & drop
-- [ ] **Print / PDF export** - print button with print-friendly CSS that hides the editor and keeps only the prose
-- [ ] **Custom themes** - additional color schemes beyond light and dark
-
-**CLI**
+- [x] **Image paste from clipboard** - paste images with `Ctrl+V`, stored the same way as drag & drop
+- [x] **Print / PDF export** - Print button opens the browser print dialog with print-friendly CSS that hides the editor and keeps only the prose
+- [x] **Custom themes** - Light, Dark, Sepia and Nord color schemes; Theme button cycles between them and the choice persists across reloads
 
 ---
 

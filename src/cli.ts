@@ -255,18 +255,22 @@ ansiMarked.use({
       return codeBox(code, lang, 'ansi');
     },
     blockquote(quote: string): string {
-      return quote.split('\n').filter(Boolean)
+      return quote.trimEnd().split('\n')
         .map(l => `${ac(L.bqBar)}▌${C.r} ${ac(L.bqText)}${l}${C.r}`)
         .join('\n') + '\n\n';
     },
-    list(body: string, _ordered: boolean): string { return '\n' + body + '\n'; },
+    list(body: string, ordered: boolean): string {
+      if (!ordered) return '\n' + body.replace(/\uE001/g, `${ac(L.list1)}•${C.r}`) + '\n';
+      let n = 0;
+      return '\n' + body.replace(/\uE001/g, () => `${ac(L.list1)}${++n}.${C.r}`) + '\n';
+    },
     listitem(text: string): string {
       const m = text.match(/^<input([^>]*)>([\s\S]*)/);
       if (m) {
         const checked = /checked/.test(m[1]);
         return `  ${checked ? `${C.b}${ac(L.list1)}[✓]${C.r}` : `${C.d}[ ]${C.r}`} ${m[2].trimEnd()}\n`;
       }
-      return `  ${ac(L.list1)}•${C.r} ${text.trimEnd()}\n`;
+      return `  \uE001 ${text.trimEnd()}\n`;
     },
     link(href: string, _title: string | null | undefined, text: string): string {
       const label = text || href;
@@ -312,18 +316,22 @@ blessedMarked.use({
       return codeBox(code, lang, 'blessed');
     },
     blockquote(quote: string): string {
-      return quote.split('\n').filter(Boolean)
+      return quote.trimEnd().split('\n')
         .map(l => `${bc(L.bqBar)}▌{/} ${bc(L.bqText)}${l}{/}`)
         .join('\n') + '\n\n';
     },
-    list(body: string, _ordered: boolean): string { return '\n' + body + '\n'; },
+    list(body: string, ordered: boolean): string {
+      if (!ordered) return '\n' + body.replace(/\uE001/g, `${bc(L.list1)}•{/}`) + '\n';
+      let n = 0;
+      return '\n' + body.replace(/\uE001/g, () => `${bc(L.list1)}${++n}.{/}`) + '\n';
+    },
     listitem(text: string): string {
       const m = text.match(/^<input([^>]*)>([\s\S]*)/);
       if (m) {
         const checked = /checked/.test(m[1]);
         return `  ${checked ? `{bold}${bc(L.list1)}[✓]{/bold}{/}` : `{gray-fg}[ ]{/}`} ${m[2].trimEnd()}\n`;
       }
-      return `  ${bc(L.list1)}•{/} ${text.trimEnd()}\n`;
+      return `  \uE001 ${text.trimEnd()}\n`;
     },
     link(href: string, _title: string | null | undefined, text: string): string {
       const label = text || href;
@@ -1463,12 +1471,13 @@ function runTui(previewUrl: string): void {
     '   g / Home     top of preview',
     '   G / End      bottom of preview',
     '   f / PgDn     page down',
-    '   b / PgUp     page up',
+    '   PgUp         page up  (b in pager mode)',
     '',
     ' {bold}{cyan-fg}Tree  (dir mode){/}',
     '   l / Enter    open file or expand folder',
     '   h            collapse folder or jump to parent',
     '   /            filter files by name',
+    '   n / N        next / previous match',
     '   Tab          switch to preview',
     '',
     ' {bold}{cyan-fg}Preview{/}',
@@ -1524,6 +1533,8 @@ function runTui(previewUrl: string): void {
   // search state
   let searchMatches: number[] = [];
   let searchIdx = 0;
+  let treeSearchMatches: number[] = [];
+  let treeSearchIdx = 0;
   let lastSearch = '';
   let originalContent = '';
 
@@ -1601,7 +1612,7 @@ function runTui(previewUrl: string): void {
 
   function updateStatusBar(inTree: boolean): void {
     const previewKeys = ' [j/k] scroll  [/] search  [n/N] match  [t] TOC  [e] edit  [b] browser  [?] help  [q] quit';
-    const treeKeys    = ' [j/k] nav  [l] open  [h] close  [/] filter  [Tab] preview  [e] edit  [?] help  [q] quit';
+    const treeKeys    = ' [j/k] nav  [l] open  [h] close  [/] filter  [n/N] next  [Tab] preview  [e] edit  [?] help  [q] quit';
     const fileKeys    = ' [j/k] scroll  [/] search  [n/N] match  [t] TOC  [e] edit  [g/G] top/bot  [b] browser  [?] help  [q] quit';
     statusBar.setContent(isDir ? (inTree ? treeKeys : previewKeys) : fileKeys);
     screen.render();
@@ -1667,6 +1678,7 @@ function runTui(previewUrl: string): void {
     screen.key(['g', 'home'], () => { if (!overlayOpen) { (previewBox as any).scrollTo(0); screen.render(); } });
     screen.key(['S-g', 'end'],() => { if (!overlayOpen) { (previewBox as any).scrollTo((previewBox as any).getScrollHeight()); screen.render(); } });
     screen.key(['f', 'pagedown'], () => { if (!overlayOpen) { (previewBox as any).scroll(Math.floor((screen.height as number) * 0.8)); screen.render(); } });
+    screen.key('pageup', () => { if (!overlayOpen) { (previewBox as any).scroll(-Math.floor((screen.height as number) * 0.8)); screen.render(); } });
     screen.key('/', () => {
       if (overlayOpen) return;
       prompt.input('Search:', lastSearch, (err: unknown, val: string) => {
@@ -1758,6 +1770,7 @@ function runTui(previewUrl: string): void {
   screen.key(['g', 'home'], () => { if (!overlayOpen && !inTree) { (previewBox as any).scrollTo(0); screen.render(); } });
   screen.key(['S-g', 'end'], () => { if (!overlayOpen && !inTree) { (previewBox as any).scrollTo((previewBox as any).getScrollHeight()); screen.render(); } });
   screen.key(['f', 'pagedown'], () => { if (!overlayOpen && !inTree) { (previewBox as any).scroll(Math.floor((screen.height as number) * 0.8)); screen.render(); } });
+  screen.key('pageup', () => { if (!overlayOpen && !inTree) { (previewBox as any).scroll(-Math.floor((screen.height as number) * 0.8)); screen.render(); } });
 
   screen.key(['l', 'enter'], () => {
     if (overlayOpen || !inTree) return;
@@ -1785,8 +1798,18 @@ function runTui(previewUrl: string): void {
       prompt.input('Filter files:', '', (err: unknown, value: string) => {
         if (!err && value) {
           const q = value.toLowerCase();
-          const match = tuiItems.findIndex(i => !i.isDir && i.label.toLowerCase().includes(q));
-          if (match >= 0) { (treeList as any).select(match); if (tuiItems[match].path) loadPreview(tuiItems[match].path!); }
+          treeSearchMatches = tuiItems.reduce<number[]>((acc, item, i) => {
+            if (!item.isDir && item.label.toLowerCase().includes(q)) acc.push(i);
+            return acc;
+          }, []);
+          treeSearchIdx = 0;
+          if (treeSearchMatches.length) {
+            const idx = treeSearchMatches[0];
+            (treeList as any).select(idx);
+            if (tuiItems[idx].path) loadPreview(tuiItems[idx].path!);
+          }
+        } else {
+          treeSearchMatches = [];
         }
         treeList.focus(); screen.render();
       });
@@ -1798,14 +1821,28 @@ function runTui(previewUrl: string): void {
     }
   });
   screen.key('n', () => {
-    if (!overlayOpen && !inTree && searchMatches.length) {
+    if (overlayOpen) return;
+    if (inTree && treeSearchMatches.length) {
+      treeSearchIdx = (treeSearchIdx + 1) % treeSearchMatches.length;
+      const idx = treeSearchMatches[treeSearchIdx];
+      (treeList as any).select(idx);
+      if (tuiItems[idx].path) loadPreview(tuiItems[idx].path!);
+      screen.render();
+    } else if (!inTree && searchMatches.length) {
       searchIdx = (searchIdx + 1) % searchMatches.length;
       (previewBox as any).scrollTo(searchMatches[searchIdx]);
       screen.render();
     }
   });
   screen.key('S-n', () => {
-    if (!overlayOpen && !inTree && searchMatches.length) {
+    if (overlayOpen) return;
+    if (inTree && treeSearchMatches.length) {
+      treeSearchIdx = (treeSearchIdx - 1 + treeSearchMatches.length) % treeSearchMatches.length;
+      const idx = treeSearchMatches[treeSearchIdx];
+      (treeList as any).select(idx);
+      if (tuiItems[idx].path) loadPreview(tuiItems[idx].path!);
+      screen.render();
+    } else if (!inTree && searchMatches.length) {
       searchIdx = (searchIdx - 1 + searchMatches.length) % searchMatches.length;
       (previewBox as any).scrollTo(searchMatches[searchIdx]);
       screen.render();
@@ -1845,7 +1882,7 @@ if (isTerminal) {
 
   const hint = blessed.box({
     bottom: 0, height: 1, left: 0, right: 0, tags: false,
-    content: ` ${basename(argPath)}   [j/k ↑↓] scroll  [g/G] top/bottom  [q] close`,
+    content: ` ${basename(argPath)}   [j/k] scroll  [f/b] page  [g/G] top/bottom  [q] close`,
     style: { bg: 'blue', fg: 'white' },
   });
 

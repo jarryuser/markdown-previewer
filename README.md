@@ -162,6 +162,8 @@ npm run build     # production build -> dist/
 
 ## Roadmap
 
+### Done
+
 - [x] **CLI viewer** (`mdp`) - opens any `.md` file in the browser with live reload; local images are served from the file's directory
 - [x] **Image drag & drop** - drop images onto the editor; inserted as short `local://N` placeholders instead of base64
 - [x] **GitHub-style task lists** - custom checkboxes with no bullet points, matching GitHub's rendering
@@ -194,6 +196,26 @@ npm run build     # production build -> dist/
 - [x] **Image paste from clipboard** - paste images with `Ctrl+V`, stored the same way as drag & drop
 - [x] **Print / PDF export** - Print button opens the browser print dialog with print-friendly CSS that hides the editor and keeps only the prose
 - [x] **Custom themes** - Light, Dark, Sepia and Nord color schemes; Theme button cycles between them and the choice persists across reloads
+
+### Planned
+
+**Web editor**
+
+- [ ] **Multiple tabs** - work on several documents at once and switch between them, without relying on the File System Access API
+- [ ] **Version history** - automatic content snapshots in localStorage with the option to restore an earlier version
+- [ ] **Zen mode** - hides the toolbar and secondary panels, leaving only the editor and preview
+- [ ] **Footnotes** - renders footnote syntax (`[^1]`) in the preview
+- [ ] **Emoji shortcodes** - turns `:smile:` into 😄 in the preview, GitHub-style
+- [ ] **Custom preview CSS** - load a user-provided stylesheet to preview the document with different styling
+- [ ] **Reading time estimate** - shown next to the word and character counter
+- [ ] **Keyboard shortcuts cheatsheet** - an overlay listing every shortcut, similar to `?` in the TUI
+
+**CLI**
+
+- [ ] **`--theme` flag** - pick a color scheme for terminal and TUI output directly from the command line
+- [ ] **Config file** (`.mdprc` / `mdp.config.json`) - default port, theme, directory and other options without repeating flags
+- [ ] **Content search** - `mdp --grep "TODO" ./notes/` searches for matches across every `.md` file in a directory
+- [ ] **Shell completion** - completion scripts for bash, zsh and fish
 
 ---
 

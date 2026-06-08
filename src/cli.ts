@@ -431,15 +431,26 @@ function insertWidePlaceholders(s: string): string {
 }
 
 // Truncates tagged content to maxW visible cells, appending '…' if cut.
+// Uses a while loop so the index stays in sync when jumping over {tag} spans.
 function truncateVisible(s: string, maxW: number): string {
   if (visibleLen(s) <= maxW) return s;
   let vis = 0; let out = ''; let i = 0;
-  for (const ch of [...s]) {
-    if (ch === '{') { const e = s.indexOf('}', i); if (e !== -1) { out += s.slice(i, e + 1); i = e + 1; continue; } }
-    if (ch === '\x1b') { const e = s.indexOf('m', i); if (e !== -1) { out += s.slice(i, e + 1); i = e + 1; continue; } }
-    const w = visibleLen(ch);
+  while (i < s.length) {
+    if (s[i] === '{') {
+      const e = s.indexOf('}', i);
+      if (e !== -1) { out += s.slice(i, e + 1); i = e + 1; continue; }
+    }
+    if (s[i] === '\x1b') {
+      const e = s.indexOf('m', i);
+      if (e !== -1) { out += s.slice(i, e + 1); i = e + 1; continue; }
+    }
+    const cp = s.codePointAt(i) ?? 0;
+    const charLen = cp > 0xFFFF ? 2 : 1;
+    const w = isWideChar(cp) ? 2 : 1;
     if (vis + w > maxW - 1) break;
-    out += ch; vis += w; i += ch.length;
+    out += s.slice(i, i + charLen);
+    vis += w;
+    i += charLen;
   }
   return out + '…';
 }
@@ -503,16 +514,20 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Injects {inverse}...{/inverse} around query matches in blessed-tagged content,
-// skipping over tag spans so tag names are never modified.
-function highlightInBlessedContent(content: string, query: string): string {
+// Highlights query matches in blessed content. The active match line uses a
+// distinct yellow-bg style; all other matches use inverse.
+function highlightInBlessedContent(content: string, query: string, activeLine?: number): string {
   if (!query) return content;
   const re = new RegExp(escapeRegex(query), 'gi');
-  const parts = content.split(/(\{[^}]*\})/g); // alternate: plain, tag, plain, tag, ...
-  return parts.map((part, i) => {
-    if (i % 2 === 1) return part; // it's a tag span
-    return part.replace(re, m => `{inverse}${m}{/inverse}`);
-  }).join('');
+  return content.split('\n').map((line, lineIdx) => {
+    const isActive = lineIdx === activeLine;
+    return line.split(/(\{[^}]*\})/g).map((part, i) => {
+      if (i % 2 === 1) return part;
+      return part.replace(re, m => isActive
+        ? `{black-fg}{yellow-bg}${m}{/yellow-bg}{/black-fg}`
+        : `{inverse}${m}{/inverse}`);
+    }).join('');
+  }).join('\n');
 }
 
 function escHtml(s: string): string {
@@ -1551,7 +1566,7 @@ function runTui(previewUrl: string): void {
     }, []);
     searchIdx = 0;
 
-    const highlighted = highlightInBlessedContent(originalContent, query);
+    const highlighted = highlightInBlessedContent(originalContent, query, searchMatches[0]);
     previewBox.setContent(highlighted);
     if (searchMatches.length) (previewBox as any).scrollTo(searchMatches[0]);
 
@@ -1689,6 +1704,7 @@ function runTui(previewUrl: string): void {
     screen.key('n', () => {
       if (!overlayOpen && searchMatches.length) {
         searchIdx = (searchIdx + 1) % searchMatches.length;
+        previewBox.setContent(highlightInBlessedContent(originalContent, lastSearch, searchMatches[searchIdx]));
         (previewBox as any).scrollTo(searchMatches[searchIdx]);
         screen.render();
       }
@@ -1696,6 +1712,7 @@ function runTui(previewUrl: string): void {
     screen.key('S-n', () => {
       if (!overlayOpen && searchMatches.length) {
         searchIdx = (searchIdx - 1 + searchMatches.length) % searchMatches.length;
+        previewBox.setContent(highlightInBlessedContent(originalContent, lastSearch, searchMatches[searchIdx]));
         (previewBox as any).scrollTo(searchMatches[searchIdx]);
         screen.render();
       }
@@ -1830,6 +1847,7 @@ function runTui(previewUrl: string): void {
       screen.render();
     } else if (!inTree && searchMatches.length) {
       searchIdx = (searchIdx + 1) % searchMatches.length;
+      previewBox.setContent(highlightInBlessedContent(originalContent, lastSearch, searchMatches[searchIdx]));
       (previewBox as any).scrollTo(searchMatches[searchIdx]);
       screen.render();
     }
@@ -1844,6 +1862,7 @@ function runTui(previewUrl: string): void {
       screen.render();
     } else if (!inTree && searchMatches.length) {
       searchIdx = (searchIdx - 1 + searchMatches.length) % searchMatches.length;
+      previewBox.setContent(highlightInBlessedContent(originalContent, lastSearch, searchMatches[searchIdx]));
       (previewBox as any).scrollTo(searchMatches[searchIdx]);
       screen.render();
     }

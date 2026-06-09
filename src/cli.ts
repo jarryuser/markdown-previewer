@@ -215,7 +215,7 @@ function codeBox(code: string, lang: string | undefined, target: 'ansi' | 'bless
   const inner    = gutter + codeW;
 
   const lab = lang ? ` ${lang} ` : '';
-  const top = `${frameOn}╭─${labelOn}${lab}${frameOn}${'─'.repeat(Math.max(0, inner - 2 - lab.length))}╮${off}`;
+  const top = `${frameOn}╭─${labelOn}${lab}${frameOn}${'─'.repeat(Math.max(0, inner - 1 - lab.length))}╮${off}`;
   const bot = `${frameOn}╰${'─'.repeat(inner)}╯${off}`;
 
   const body: string[] = [];
@@ -536,6 +536,13 @@ function formatTable(rawHeader: string, rawBody: string, target: 'ansi' | 'bless
   if (natural + overhead > available) {
     const budget = Math.max(cols * 4, available - overhead);
     widths = widths.map(w => Math.max(4, Math.floor(w * budget / natural)));
+  }
+  // floor() rounding can push sum over available; trim the widest column
+  const sumW = widths.reduce((s, w) => s + w, 0);
+  if (sumW + overhead > available) {
+    const excess = sumW + overhead - available;
+    const maxIdx = widths.indexOf(Math.max(...widths));
+    widths[maxIdx] = Math.max(4, widths[maxIdx] - excess);
   }
 
   const pad = (s: string, w: number) => {

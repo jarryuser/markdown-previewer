@@ -108,6 +108,10 @@ mdp README.md --terminal
 # interactive TUI: split-pane in the terminal
 mdp README.md --tui
 mdp ~/notes/ --tui
+
+# pick a color scheme for terminal/TUI output (dark, light, sepia, nord)
+mdp README.md -t --theme nord
+mdp ~/notes/ --tui --theme sepia
 ```
 
 The browser opens automatically. Edit files in any editor - the page reloads on each save
@@ -196,6 +200,7 @@ npm run build     # production build -> dist/
 - [x] **Image paste from clipboard** - paste images with `Ctrl+V`, stored the same way as drag & drop
 - [x] **Print / PDF export** - Print button opens the browser print dialog with print-friendly CSS that hides the editor and keeps only the prose
 - [x] **Custom themes** - Light, Dark, Sepia and Nord color schemes; Theme button cycles between them and the choice persists across reloads
+- [x] **`--theme` flag** - pick a color scheme for terminal and TUI output: `mdp README.md -t --theme nord`
 
 ### Planned
 
@@ -212,7 +217,6 @@ npm run build     # production build -> dist/
 
 **CLI**
 
-- [ ] **`--theme` flag** - pick a color scheme for terminal and TUI output directly from the command line
 - [ ] **Config file** (`.mdprc` / `mdp.config.json`) - default port, theme, directory and other options without repeating flags
 - [ ] **Content search** - `mdp --grep "TODO" ./notes/` searches for matches across every `.md` file in a directory
 - [ ] **Shell completion** - completion scripts for bash, zsh and fish

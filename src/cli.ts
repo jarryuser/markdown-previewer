@@ -56,31 +56,120 @@ const C = {
   u:  '\x1b[4m',  // underline
 } as const;
 
-// leaf ocean dark theme (RGB values from presets.rs)
-const L = {
-  h1:        [140, 190, 255] as const,
-  h2:        [120, 210, 170] as const,
-  h3:        [210, 180, 120] as const,
-  h4:        [162, 192, 222] as const,
-  h56:       [180, 180, 190] as const,
-  hLine:     [ 40,  50,  75] as const,
-  bold:      [245, 245, 255] as const,
-  codeFg:    [220, 150, 118] as const, // inline code (base09 orange)
-  codeText:  [192, 197, 206] as const, // default code-block text (base05)
-  codeBg:    [ 38,  32,  31] as const,
-  codeFrame: [ 40,  48,  68] as const,
-  codeLabel: [ 95, 110, 145] as const,
-  bqText:    [148, 148, 195] as const,
-  bqBar:     [ 75,  80, 148] as const,
-  list1:     [ 95, 200, 148] as const,
-  list2:     [138, 155, 200] as const,
-  list3:     [168, 168, 185] as const,
-  link:      [ 88, 152, 238] as const,
-  rule:      [ 48,  56,  76] as const,
-  tableB:    [110, 130, 185] as const, // table border - brighter than rule
-} as const;
-
 type Rgb = readonly [number, number, number];
+
+interface ThemePalette {
+  h1: Rgb; h2: Rgb; h3: Rgb; h4: Rgb; h56: Rgb; hLine: Rgb; bold: Rgb;
+  codeFg: Rgb; codeText: Rgb; codeBg: Rgb; codeFrame: Rgb; codeLabel: Rgb;
+  bqText: Rgb; bqBar: Rgb; list1: Rgb; list2: Rgb; list3: Rgb; link: Rgb; rule: Rgb; tableB: Rgb;
+}
+
+// color schemes for terminal and TUI output, picked via --theme <name>
+const THEME_PALETTES: Record<string, ThemePalette> = {
+  // leaf ocean dark theme (RGB values from presets.rs)
+  dark: {
+    h1:        [140, 190, 255],
+    h2:        [120, 210, 170],
+    h3:        [210, 180, 120],
+    h4:        [162, 192, 222],
+    h56:       [180, 180, 190],
+    hLine:     [ 40,  50,  75],
+    bold:      [245, 245, 255],
+    codeFg:    [220, 150, 118], // inline code (base09 orange)
+    codeText:  [192, 197, 206], // default code-block text (base05)
+    codeBg:    [ 38,  32,  31],
+    codeFrame: [ 40,  48,  68],
+    codeLabel: [ 95, 110, 145],
+    bqText:    [148, 148, 195],
+    bqBar:     [ 75,  80, 148],
+    list1:     [ 95, 200, 148],
+    list2:     [138, 155, 200],
+    list3:     [168, 168, 185],
+    link:      [ 88, 152, 238],
+    rule:      [ 48,  56,  76],
+    tableB:    [110, 130, 185], // table border - brighter than rule
+  },
+  light: {
+    h1:        [  9, 105, 218],
+    h2:        [ 26, 127,  55],
+    h3:        [154, 103,   0],
+    h4:        [ 66,  87, 108],
+    h56:       [101, 109, 118],
+    hLine:     [208, 215, 222],
+    bold:      [ 31,  35,  40],
+    codeFg:    [203,  75,  22],
+    codeText:  [ 31,  35,  40],
+    codeBg:    [246, 248, 250],
+    codeFrame: [208, 215, 222],
+    codeLabel: [101, 109, 118],
+    bqText:    [101, 109, 118],
+    bqBar:     [208, 215, 222],
+    list1:     [ 26, 127,  55],
+    list2:     [  9, 105, 218],
+    list3:     [101, 109, 118],
+    link:      [  9, 105, 218],
+    rule:      [208, 215, 222],
+    tableB:    [175, 184, 193],
+  },
+  sepia: {
+    h1:        [160,  82,  45],
+    h2:        [107, 124,  68],
+    h3:        [138, 107,  40],
+    h4:        [ 91,  70,  54],
+    h56:       [138, 116,  88],
+    hLine:     [216, 200, 168],
+    bold:      [ 91,  70,  54],
+    codeFg:    [160,  82,  45],
+    codeText:  [ 91,  70,  54],
+    codeBg:    [236, 224, 200],
+    codeFrame: [216, 200, 168],
+    codeLabel: [138, 116,  88],
+    bqText:    [138, 116,  88],
+    bqBar:     [216, 200, 168],
+    list1:     [107, 124,  68],
+    list2:     [160,  82,  45],
+    list3:     [138, 116,  88],
+    link:      [160,  82,  45],
+    rule:      [216, 200, 168],
+    tableB:    [190, 170, 130],
+  },
+  nord: {
+    h1:        [136, 192, 208],
+    h2:        [143, 188, 187],
+    h3:        [235, 203, 139],
+    h4:        [129, 161, 193],
+    h56:       [216, 222, 233],
+    hLine:     [ 76,  86, 106],
+    bold:      [236, 239, 244],
+    codeFg:    [208, 135, 112],
+    codeText:  [216, 222, 233],
+    codeBg:    [ 59,  66,  82],
+    codeFrame: [ 76,  86, 106],
+    codeLabel: [129, 161, 193],
+    bqText:    [129, 161, 193],
+    bqBar:     [ 94, 129, 172],
+    list1:     [163, 190, 140],
+    list2:     [129, 161, 193],
+    list3:     [216, 222, 233],
+    link:      [136, 192, 208],
+    rule:      [ 67,  76,  94],
+    tableB:    [ 94, 129, 172],
+  },
+};
+
+const THEME_NAMES = Object.keys(THEME_PALETTES);
+
+function resolveTheme(): string {
+  const i = process.argv.indexOf('--theme');
+  const name = i !== -1 ? process.argv[i + 1] : undefined;
+  if (!name) return 'dark';
+  if (THEME_NAMES.includes(name)) return name;
+  console.error(`Unknown theme "${name}" (expected: ${THEME_NAMES.join(', ')}), using "dark"`);
+  return 'dark';
+}
+
+const THEME = resolveTheme();
+const L = THEME_PALETTES[THEME];
 
 // ANSI 24-bit true-color
 function ac([r, g, b]: Rgb): string   { return `\x1b[38;2;${r};${g};${b}m`; }
@@ -93,39 +182,141 @@ function toHex([r, g, b]: Rgb): string {
 function bc(rgb: Rgb): string   { return `{#${toHex(rgb)}-fg}`; }
 function bcBg(rgb: Rgb): string { return `{#${toHex(rgb)}-bg}`; }
 
-// base16-ocean.dark syntax palette (leaf uses this for code highlighting)
-const SYN: Record<string, Rgb> = {
-  keyword:   [180, 142, 173], // purple
-  built_in:  [150, 181, 180], // cyan
-  type:      [235, 203, 139], // yellow
-  literal:   [208, 135, 112], // orange
-  number:    [208, 135, 112], // orange
-  string:    [163, 190, 140], // green
-  regexp:    [163, 190, 140], // green
-  comment:   [101, 115, 126], // gray
-  doctag:    [101, 115, 126],
-  title:     [143, 161, 179], // blue (function/class names)
-  function:  [143, 161, 179],
-  class:     [235, 203, 139],
-  params:    [192, 197, 206], // default text
-  variable:  [191, 97, 106],  // red
-  attr:      [143, 161, 179], // blue
-  property:  [191, 97, 106],
-  symbol:    [150, 181, 180],
-  meta:      [150, 181, 180],
-  'meta-keyword': [180, 142, 173],
-  'meta-string':  [163, 190, 140],
-  operator:  [150, 181, 180],
-  punctuation: [192, 197, 206],
-  'selector-tag':   [180, 142, 173],
-  'selector-class': [235, 203, 139],
-  'selector-id':    [143, 161, 179],
-  tag:       [180, 142, 173],
-  name:      [180, 142, 173],
-  bullet:    [208, 135, 112],
-  link:      [150, 181, 180],
-  'attr-name': [143, 161, 179],
+// syntax palettes for code-block highlighting, one per theme
+const THEME_SYNTAX: Record<string, Record<string, Rgb>> = {
+  // base16-ocean.dark
+  dark: {
+    keyword:   [180, 142, 173], // purple
+    built_in:  [150, 181, 180], // cyan
+    type:      [235, 203, 139], // yellow
+    literal:   [208, 135, 112], // orange
+    number:    [208, 135, 112], // orange
+    string:    [163, 190, 140], // green
+    regexp:    [163, 190, 140], // green
+    comment:   [101, 115, 126], // gray
+    doctag:    [101, 115, 126],
+    title:     [143, 161, 179], // blue (function/class names)
+    function:  [143, 161, 179],
+    class:     [235, 203, 139],
+    params:    [192, 197, 206], // default text
+    variable:  [191,  97, 106], // red
+    attr:      [143, 161, 179], // blue
+    property:  [191,  97, 106],
+    symbol:    [150, 181, 180],
+    meta:      [150, 181, 180],
+    'meta-keyword': [180, 142, 173],
+    'meta-string':  [163, 190, 140],
+    operator:  [150, 181, 180],
+    punctuation: [192, 197, 206],
+    'selector-tag':   [180, 142, 173],
+    'selector-class': [235, 203, 139],
+    'selector-id':    [143, 161, 179],
+    tag:       [180, 142, 173],
+    name:      [180, 142, 173],
+    bullet:    [208, 135, 112],
+    link:      [150, 181, 180],
+    'attr-name': [143, 161, 179],
+  },
+  light: {
+    keyword:   [207,  34,  46], // red
+    built_in:  [ 17,  99,  99], // teal
+    type:      [173, 109,   8], // brown
+    literal:   [192,  86,   0], // orange
+    number:    [192,  86,   0],
+    string:    [ 10, 124,  69], // green
+    regexp:    [ 10, 124,  69],
+    comment:   [110, 119, 129], // gray
+    doctag:    [110, 119, 129],
+    title:     [130,  80, 223], // purple (function/class names)
+    function:  [130,  80, 223],
+    class:     [173, 109,   8],
+    params:    [ 31,  35,  40], // default text
+    variable:  [207,  34,  46], // red
+    attr:      [  9, 105, 218], // blue
+    property:  [207,  34,  46],
+    symbol:    [ 17,  99,  99],
+    meta:      [ 17,  99,  99],
+    'meta-keyword': [207,  34,  46],
+    'meta-string':  [ 10, 124,  69],
+    operator:  [ 17,  99,  99],
+    punctuation: [ 31,  35,  40],
+    'selector-tag':   [207,  34,  46],
+    'selector-class': [173, 109,   8],
+    'selector-id':    [130,  80, 223],
+    tag:       [207,  34,  46],
+    name:      [207,  34,  46],
+    bullet:    [192,  86,   0],
+    link:      [ 17,  99,  99],
+    'attr-name': [  9, 105, 218],
+  },
+  sepia: {
+    keyword:   [160,  82,  45], // sienna
+    built_in:  [ 90, 110,  90], // muted teal
+    type:      [138, 107,  40], // dark gold
+    literal:   [180,  95,  40], // burnt orange
+    number:    [180,  95,  40],
+    string:    [107, 124,  68], // olive green
+    regexp:    [107, 124,  68],
+    comment:   [150, 130, 100], // light brown
+    doctag:    [150, 130, 100],
+    title:     [140,  95,  70], // function/class names
+    function:  [140,  95,  70],
+    class:     [138, 107,  40],
+    params:    [ 91,  70,  54], // default text
+    variable:  [165,  60,  50], // muted red
+    attr:      [120,  90, 150], // muted purple
+    property:  [165,  60,  50],
+    symbol:    [ 90, 110,  90],
+    meta:      [ 90, 110,  90],
+    'meta-keyword': [160,  82,  45],
+    'meta-string':  [107, 124,  68],
+    operator:  [ 90, 110,  90],
+    punctuation: [ 91,  70,  54],
+    'selector-tag':   [160,  82,  45],
+    'selector-class': [138, 107,  40],
+    'selector-id':    [120,  90, 150],
+    tag:       [160,  82,  45],
+    name:      [160,  82,  45],
+    bullet:    [180,  95,  40],
+    link:      [ 90, 110,  90],
+    'attr-name': [120,  90, 150],
+  },
+  // base16-nord
+  nord: {
+    keyword:   [180, 142, 173], // nord15 purple
+    built_in:  [136, 192, 208], // nord8 cyan
+    type:      [235, 203, 139], // nord13 yellow
+    literal:   [208, 135, 112], // nord12 orange
+    number:    [208, 135, 112],
+    string:    [163, 190, 140], // nord14 green
+    regexp:    [163, 190, 140],
+    comment:   [ 76,  86, 106], // nord3 gray
+    doctag:    [ 76,  86, 106],
+    title:     [129, 161, 193], // nord9 blue (function/class names)
+    function:  [129, 161, 193],
+    class:     [235, 203, 139],
+    params:    [216, 222, 233], // nord4 default text
+    variable:  [191,  97, 106], // nord11 red
+    attr:      [129, 161, 193],
+    property:  [191,  97, 106],
+    symbol:    [136, 192, 208],
+    meta:      [136, 192, 208],
+    'meta-keyword': [180, 142, 173],
+    'meta-string':  [163, 190, 140],
+    operator:  [136, 192, 208],
+    punctuation: [216, 222, 233],
+    'selector-tag':   [180, 142, 173],
+    'selector-class': [235, 203, 139],
+    'selector-id':    [129, 161, 193],
+    tag:       [180, 142, 173],
+    name:      [180, 142, 173],
+    bullet:    [208, 135, 112],
+    link:      [136, 192, 208],
+    'attr-name': [129, 161, 193],
+  },
 };
+
+const SYN: Record<string, Rgb> = THEME_SYNTAX[THEME];
 
 interface Run { text: string; color: Rgb | null; }
 
@@ -1236,6 +1427,8 @@ Options:
   -t, --terminal         Render in a terminal pager (scrollable, no browser)
       --tui              Open interactive TUI: file tree + preview
       --port <number>    Use a fixed port instead of a random one
+      --theme <name>     Color scheme for terminal and TUI output
+                         (${THEME_NAMES.join(', ')}; default: dark)
 \nWith no arguments, shows a numbered list of recently opened files.
 Use  mdp <number>  to reopen an entry.\n`);
   process.exit(0);
@@ -1250,6 +1443,9 @@ for (let i = 0; i < args.length; i++) {
       console.error('Invalid port number');
       process.exit(1);
     }
+    i++;
+  } else if (args[i] === '--theme' && args[i + 1]) {
+    // resolved earlier via resolveTheme(); just skip the value here
     i++;
   } else if (args[i] === '--tui' || args[i] === '-t' || args[i] === '--terminal') {
     // handled below

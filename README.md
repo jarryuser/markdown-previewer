@@ -11,7 +11,12 @@
 [![highlight.js](https://img.shields.io/badge/highlight.js-11-yellow?style=flat-square)](https://highlightjs.org/)
 [![GitHub Pages](https://img.shields.io/badge/Deployed%20on-GitHub%20Pages-222?style=flat-square&logo=github)](https://pages.github.com/)
 
+
+**English** · [Українська](README.uk.md) · [Slovenčina](README.sk.md) · [Deutsch](README.de.md) · [Русский](README.ru.md)
+
 </div>
+
+
 
 ---
 
@@ -59,8 +64,8 @@ The project also ships a small CLI (`mdp`) that renders any local `.md` file in 
 
 `mdp` works in two modes:
 
-- **File mode** — opens a single `.md` file; page live-reloads on every save
-- **Directory mode** — opens a directory with a file tree sidebar; click any file to preview it; reloads when the current file changes
+- **File mode** - opens a single `.md` file; page live-reloads on every save
+- **Directory mode** - opens a directory with a file tree sidebar; click any file to preview it; reloads when the current file changes
 
 Images referenced with relative paths are served automatically
 
@@ -201,6 +206,8 @@ npm run build     # production build -> dist/
 - [x] **Print / PDF export** - Print button opens the browser print dialog with print-friendly CSS that hides the editor and keeps only the prose
 - [x] **Custom themes** - Light, Dark, Sepia and Nord color schemes; Theme button cycles between them and the choice persists across reloads
 - [x] **`--theme` flag** - pick a color scheme for terminal and TUI output: `mdp README.md -t --theme nord`
+- [x] **Emoji shortcodes** - turns `:smile:` into 😄 in the preview, GitHub-style
+- [x] **Footnotes** - renders footnote syntax (`[^1]`) in the preview
 
 ### Planned
 
@@ -209,8 +216,6 @@ npm run build     # production build -> dist/
 - [ ] **Multiple tabs** - work on several documents at once and switch between them, without relying on the File System Access API
 - [ ] **Version history** - automatic content snapshots in localStorage with the option to restore an earlier version
 - [ ] **Zen mode** - hides the toolbar and secondary panels, leaving only the editor and preview
-- [ ] **Footnotes** - renders footnote syntax (`[^1]`) in the preview
-- [ ] **Emoji shortcodes** - turns `:smile:` into 😄 in the preview, GitHub-style
 - [ ] **Custom preview CSS** - load a user-provided stylesheet to preview the document with different styling
 - [ ] **Reading time estimate** - shown next to the word and character counter
 - [ ] **Keyboard shortcuts cheatsheet** - an overlay listing every shortcut, similar to `?` in the TUI

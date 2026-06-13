@@ -200,6 +200,12 @@ button.active:hover { opacity: .85; }
 /* light mode: keep CodeMirror syntax colors readable against our bg */
 #editor .cm-line { padding-left: 16px; }
 
+/* footnote definition content in the editor - consistent color regardless of word count */
+[data-theme="light"] #editor .cm-footnote-content,
+[data-theme="sepia"] #editor .cm-footnote-content { color: #4078f2; }
+[data-theme="dark"] #editor .cm-footnote-content,
+[data-theme="nord"] #editor .cm-footnote-content { color: #569cd6; }
+
 /* vim mode status bar */
 #editor .cm-vim-panel {
   background: var(--bg-toolbar);
@@ -411,6 +417,38 @@ button.active:hover { opacity: .85; }
   border-radius: var(--radius);
 }
 
+/* ── Footnotes ─────────────────────────────────────────────────────────────── */
+.prose .footnotes {
+  margin-top: 2em;
+  padding-top: 1em;
+  border-top: 1px solid var(--border);
+  font-size: 0.875em;
+}
+
+.prose .footnotes hr {
+  display: none;
+}
+
+.prose .footnotes ol {
+  padding-left: 1.5em;
+}
+
+.prose .footnotes li {
+  margin-bottom: 0.5em;
+}
+
+.prose .footnotes li:target {
+  background: var(--btn-bg);
+  padding: 0.25em 0.5em;
+  border-radius: var(--radius);
+}
+
+.prose .footnote-ref {
+  font-size: 0.75em;
+  vertical-align: super;
+  line-height: 0;
+}
+
 /* ── highlight.js dark theme override ─────────────────────────────────────── */
 [data-theme="dark"] .hljs {
   background: transparent;
@@ -552,7 +590,161 @@ button.active:hover { opacity: .85; }
 [data-theme="nord"] .katex { color: var(--text); }
 
 /* ── Print / PDF export ────────────────────────────────────────────────────── */
+/* ── Emoji picker ──────────────────────────────────────────────────────────── */
+#emoji-picker {
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 420px;
+  max-height: 480px;
+  background: var(--bg, #fff);
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.2);
+  z-index: 1000;
+  flex-direction: column;
+}
+
+#emoji-picker.open {
+  display: flex;
+}
+
+.emoji-picker-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border, #d0d7de);
+}
+
+.emoji-picker-header input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+  background: var(--bg-secondary, #f6f8fa);
+  color: var(--text, #1f2328);
+}
+
+.emoji-picker-header input:focus {
+  border-color: var(--accent, #2f81f7);
+}
+
+.emoji-count {
+  font-size: 11px;
+  color: var(--text-muted, #656d76);
+  white-space: nowrap;
+}
+
+#emoji-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--text-muted, #656d76);
+}
+
+#emoji-close-btn:hover {
+  background: var(--border, #d0d7de);
+}
+
+#emoji-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-content: flex-start;
+}
+
+.emoji-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
+  cursor: pointer;
+  border-radius: 4px;
+  position: relative;
+}
+
+.emoji-cell:hover {
+  background: var(--border, #d0d7de);
+  transform: scale(1.15);
+  z-index: 1;
+}
+
+.emoji-cell .emoji-tooltip {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1f2328;
+  color: #fff;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.emoji-cell:hover .emoji-tooltip {
+  display: block;
+}
+
+.emoji-picker-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.3);
+  z-index: 999;
+}
+
+.emoji-picker-backdrop.open {
+  display: block;
+}
+
+[data-theme="dark"] #emoji-picker,
+[data-theme="nord"] #emoji-picker {
+  background: #222;
+  border-color: #444;
+}
+
+[data-theme="dark"] .emoji-picker-header input,
+[data-theme="nord"] .emoji-picker-header input {
+  background: #333;
+  color: #e6e6e6;
+  border-color: #444;
+}
+
+[data-theme="dark"] .emoji-cell:hover,
+[data-theme="nord"] .emoji-cell:hover {
+  background: #444;
+}
+
+[data-theme="dark"] .emoji-cell .emoji-tooltip,
+[data-theme="nord"] .emoji-cell .emoji-tooltip {
+  background: #e6e6e6;
+  color: #1f2328;
+}
+
+[data-theme="dark"] .emoji-picker-header,
+[data-theme="nord"] .emoji-picker-header {
+  border-color: #444;
+}
+
 @media print {
+  #emoji-picker { display: none !important; }
   .toolbar, #editor, #divider, #toc, #fsa-overlay {
     display: none !important;
   }

@@ -8,10 +8,14 @@ import type { AddressInfo } from 'node:net';
 import { marked, Marked } from 'marked';
 import blessed from 'blessed';
 import markedKatex from 'marked-katex-extension';
+import markedFootnote from 'marked-footnote';
 import hljs from 'highlight.js';
 import styles from './style.css?raw';
+import { markedEmoji } from './emoji.js';
 
 marked.use(markedKatex({ throwOnError: false }));
+marked.use(markedEmoji);
+marked.use(markedFootnote());
 marked.use({
   gfm: true,
   breaks: false,
@@ -485,6 +489,8 @@ ansiMarked.use({
     text(text: string): string { return decodeEntities(text); },
   },
 });
+ansiMarked.use(markedEmoji);
+ansiMarked.use(markedFootnote());
 
 // ── Blessed renderer - leaf ocean dark theme, hex color tags ──────────────────
 // Code content has no color tags - avoids { } in code being parsed as blessed tags
@@ -545,6 +551,8 @@ blessedMarked.use({
     text(text: string): string { return decodeEntities(text); },
   },
 });
+blessedMarked.use(markedEmoji);
+blessedMarked.use(markedFootnote());
 
 // BMP codepoints with Emoji_Presentation=Yes per Unicode 15 emoji-data.txt.
 // Only these are rendered as 2-column emoji by modern terminals without FE0F.

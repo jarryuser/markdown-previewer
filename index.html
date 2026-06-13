@@ -36,6 +36,7 @@
       <button id="font-inc-btn" title="Increase font size">A+</button>
       <button id="wrap-btn">Wrap</button>
       <button id="scroll-btn">Sync</button>
+      <button id="emoji-btn" title="Insert emoji shortcode">😀</button>
       <button id="toc-btn" title="Table of contents">TOC</button>
       <button id="vim-btn">Vim</button>
       <button id="fullscreen-btn">Full ⛶</button>
@@ -79,6 +80,16 @@
         <div class="prose" id="fsa-prose"><p style="color:var(--text-muted)">Select a file from the sidebar</p></div>
       </div>
     </main>
+  </div>
+
+  <div id="emoji-backdrop" class="emoji-picker-backdrop"></div>
+  <div id="emoji-picker">
+    <div class="emoji-picker-header">
+      <input id="emoji-search" type="text" placeholder="Search emoji..." autocomplete="off" spellcheck="false" />
+      <span id="emoji-count" class="emoji-count"></span>
+      <button id="emoji-close-btn">✕</button>
+    </div>
+    <div id="emoji-grid"></div>
   </div>
 
   <script type="module" src="/src/main.ts"></script>

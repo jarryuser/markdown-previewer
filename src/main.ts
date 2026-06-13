@@ -1,8 +1,10 @@
 import { marked } from 'marked';
 import markedKatex from 'marked-katex-extension';
+import markedFootnote from 'marked-footnote';
 import hljs from 'highlight.js';
-import { EditorView, keymap } from '@codemirror/view';
-import { Compartment, EditorSelection, Prec } from '@codemirror/state';
+import { markedEmoji, GITHUB_EMOJI } from './emoji.js';
+import { EditorView, keymap, Decoration } from '@codemirror/view';
+import { Compartment, EditorSelection, Prec, StateField, RangeSet, Range } from '@codemirror/state';
 import { basicSetup } from 'codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
@@ -25,6 +27,8 @@ function getMermaid() {
 
 // KaTeX for math: $inline$ and $$block$$ syntax
 marked.use(markedKatex({ throwOnError: false }));
+marked.use(markedEmoji);
+marked.use(markedFootnote());
 
 // marked v5+ removed the `highlight` option - use a custom renderer instead
 marked.use({
@@ -59,6 +63,13 @@ const vimBtn = document.getElementById('vim-btn') as HTMLButtonElement;
 const fullscreenBtn = document.getElementById('fullscreen-btn') as HTMLButtonElement;
 const printBtn = document.getElementById('print-btn') as HTMLButtonElement;
 const findBtn = document.getElementById('find-btn') as HTMLButtonElement;
+const emojiBtn = document.getElementById('emoji-btn') as HTMLButtonElement;
+const emojiPicker = document.getElementById('emoji-picker') as HTMLElement;
+const emojiBackdrop = document.getElementById('emoji-backdrop') as HTMLElement;
+const emojiGrid = document.getElementById('emoji-grid') as HTMLElement;
+const emojiSearch = document.getElementById('emoji-search') as HTMLInputElement;
+const emojiCount = document.getElementById('emoji-count') as HTMLElement;
+const emojiCloseBtn = document.getElementById('emoji-close-btn') as HTMLButtonElement;
 const tocBtn = document.getElementById('toc-btn') as HTMLButtonElement;
 const tocPanel = document.getElementById('toc') as HTMLElement;
 const divider = document.getElementById('divider') as HTMLElement;
@@ -242,6 +253,27 @@ const editorView = new EditorView({
     vimCompartment.of(vimEnabled ? vim() : []),
     // Prec.highest ensures our keys take priority over defaultKeymap in basicSetup
     // (e.g. Mod-i is bound to selectLine there)
+    // highlight footnote definition content with consistent color
+    StateField.define<RangeSet<Decoration>>({
+      create() { return Decoration.none; },
+      update(_deco, tr) {
+        if (!tr.docChanged) return _deco;
+        const footnoteLine = /^(\[\^[^\]]+\]:\s*)(.*)/;
+        const decos: Range<Decoration>[] = [];
+        for (let i = 1; i <= tr.state.doc.lines; i++) {
+          const line = tr.state.doc.line(i);
+          const m = footnoteLine.exec(line.text);
+          if (m) {
+            const from = line.from + m[1].length;
+            if (from < line.to) {
+              decos.push(Decoration.mark({ class: 'cm-footnote-content' }).range(from, line.to));
+            }
+          }
+        }
+        return RangeSet.of(decos);
+      },
+      provide: f => EditorView.decorations.from(f),
+    }),
     Prec.highest(keymap.of([
       // insert 2 spaces on Tab instead of moving focus
       { key: 'Tab', run: view => { view.dispatch(view.state.replaceSelection('  ')); return true; } },
@@ -424,6 +456,74 @@ tocBtn.addEventListener('click', () => {
   const active = tocPanel.classList.toggle('active');
   tocBtn.classList.toggle('active', active);
   if (active) buildToc();
+});
+
+// ── Emoji picker ──────────────────────────────────────────────────────────────
+
+const emojiEntries = Object.entries(GITHUB_EMOJI).sort(([a], [b]) => a.localeCompare(b));
+const emojiFrag = document.createDocumentFragment();
+
+for (const [name, char] of emojiEntries) {
+  const cell = document.createElement('div');
+  cell.className = 'emoji-cell';
+  cell.dataset.name = name;
+  cell.innerHTML = `${char}<span class="emoji-tooltip">:${name}:</span>`;
+  cell.addEventListener('click', () => {
+    editorView.dispatch(editorView.state.replaceSelection(`:${name}:`));
+    editorView.focus();
+    closeEmojiPicker();
+  });
+  emojiFrag.appendChild(cell);
+}
+
+emojiGrid.appendChild(emojiFrag);
+emojiCount.textContent = `${emojiEntries.length}`;
+
+function filterEmoji(query: string): void {
+  const q = query.toLowerCase();
+  const cells = emojiGrid.querySelectorAll<HTMLElement>('.emoji-cell');
+  let visible = 0;
+  for (const cell of cells) {
+    const name = cell.dataset.name ?? '';
+    const match = !q || name.includes(q);
+    cell.style.display = match ? '' : 'none';
+    if (match) visible++;
+  }
+  emojiCount.textContent = `${visible} / ${cells.length}`;
+}
+
+emojiSearch.addEventListener('input', () => filterEmoji(emojiSearch.value));
+
+function openEmojiPicker(): void {
+  emojiPicker.classList.add('open');
+  emojiBackdrop.classList.add('open');
+  emojiSearch.value = '';
+  emojiSearch.focus();
+  filterEmoji('');
+}
+
+function closeEmojiPicker(): void {
+  emojiPicker.classList.remove('open');
+  emojiBackdrop.classList.remove('open');
+}
+
+emojiBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (emojiPicker.classList.contains('open')) {
+    closeEmojiPicker();
+  } else {
+    openEmojiPicker();
+  }
+});
+
+emojiCloseBtn.addEventListener('click', closeEmojiPicker);
+emojiBackdrop.addEventListener('click', closeEmojiPicker);
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && emojiPicker.classList.contains('open')) {
+    closeEmojiPicker();
+    emojiBtn.focus();
+  }
 });
 
 fullscreenBtn.addEventListener('click', () => {

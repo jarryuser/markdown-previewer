@@ -86,6 +86,280 @@ type Theme = typeof THEMES[number];
 const THEME_LABELS: Record<Theme, string> = { light: 'Light', dark: 'Dark', sepia: 'Sepia', nord: 'Nord' };
 function isDarkTheme(t: Theme): boolean { return t === 'dark' || t === 'nord'; }
 
+// ── Tab management ──────────────────────────────────────────────────────────────
+
+interface Tab {
+  id: string;
+  title: string;
+  content: string;
+  savedContent: string;
+  fileHandle?: FileSystemFileHandle | null;
+}
+
+let tabs: Tab[] = [];
+let activeTabId: string | null = null;
+const tabItems = document.getElementById('tab-items') as HTMLElement;
+const newTabBtn = document.getElementById('new-tab-btn') as HTMLButtonElement;
+const TAB_LIST_KEY = 'md-tab-list';
+
+function tabGenId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function tabGetActive(): Tab | null {
+  return tabs.find(t => t.id === activeTabId) ?? null;
+}
+
+function tabSaveMeta(): void {
+  const meta = tabs.map(t => ({ id: t.id, title: t.title }));
+  localStorage.setItem(TAB_LIST_KEY, JSON.stringify(meta));
+}
+
+function tabSaveContent(tab: Tab): void {
+  localStorage.setItem(`md-tab-${tab.id}`, tab.content);
+}
+
+function tabLoadAll(): Tab[] {
+  const raw = localStorage.getItem(TAB_LIST_KEY);
+  if (!raw) return [];
+  try {
+    const meta: { id: string; title: string }[] = JSON.parse(raw);
+    return meta.map(m => {
+      const content = localStorage.getItem(`md-tab-${m.id}`) ?? '';
+      return { id: m.id, title: m.title, content, savedContent: content };
+    });
+  } catch { return []; }
+}
+
+function tabCreate(title: string, content?: string, fileHandle?: FileSystemFileHandle | null): Tab {
+  const tab: Tab = {
+    id: tabGenId(),
+    title,
+    content: content ?? '',
+    savedContent: content ?? '',
+    fileHandle: fileHandle ?? undefined,
+  };
+  tabs.push(tab);
+  tabSaveContent(tab);
+  tabSaveMeta();
+  return tab;
+}
+
+function tabSwitch(id: string): void {
+  const current = tabGetActive();
+  if (current) {
+    current.content = editorView.state.doc.toString();
+    tabSaveContent(current);
+    tabTakeSnapshot(current.id);
+  }
+
+  activeTabId = id;
+  const tab = tabGetActive();
+  if (!tab) return;
+
+  editorView.dispatch({
+    changes: { from: 0, to: editorView.state.doc.length, insert: tab.content },
+  });
+
+  if (tab.fileHandle) {
+    saveFileBtn.style.display = '';
+    openFileNameEl.textContent = tab.title;
+    openFileNameEl.style.display = '';
+  } else {
+    saveFileBtn.style.display = 'none';
+    openFileNameEl.style.display = 'none';
+  }
+
+  tabRenderBar();
+  tabStartPolling();
+}
+
+function tabClose(id: string): void {
+  const idx = tabs.findIndex(t => t.id === id);
+  if (idx === -1) return;
+  const tab = tabs[idx];
+
+  if (tab.content !== tab.savedContent) {
+    if (!confirm(`"${tab.title}" has unsaved changes. Close anyway?`)) return;
+  }
+
+  const wasActive = id === activeTabId;
+  tabs.splice(idx, 1);
+  localStorage.removeItem(`md-tab-${id}`);
+  localStorage.removeItem(historyKey(id));
+
+  if (tabs.length === 0) {
+    tabCreate('Untitled');
+    tabSaveMeta();
+    tabRenderBar();
+    return;
+  }
+
+  if (wasActive) {
+    const nextIdx = Math.min(idx, tabs.length - 1);
+    const nextTab = tabs[nextIdx];
+    activeTabId = nextTab.id;
+    editorView.dispatch({
+      changes: { from: 0, to: editorView.state.doc.length, insert: nextTab.content },
+    });
+    tabStartPolling();
+  }
+
+  tabSaveMeta();
+  tabRenderBar();
+}
+
+function tabRenderBar(): void {
+  tabItems.innerHTML = '';
+  for (const tab of tabs) {
+    const el = document.createElement('div');
+    el.className = `tab-item${tab.id === activeTabId ? ' active' : ''}`;
+
+    if (tab.content !== tab.savedContent) {
+      const dot = document.createElement('span');
+      dot.className = 'tab-dirty';
+      el.appendChild(dot);
+    }
+
+    const title = document.createElement('span');
+    title.textContent = tab.title;
+    el.appendChild(title);
+    el.title = tab.title;
+
+    const close = document.createElement('button');
+    close.className = 'tab-close';
+    close.textContent = '×';
+    close.addEventListener('click', (e) => {
+      e.stopPropagation();
+      tabClose(tab.id);
+    });
+    el.appendChild(close);
+
+    el.addEventListener('click', () => tabSwitch(tab.id));
+    tabItems.appendChild(el);
+  }
+}
+
+function tabToggleDirty(tab: Tab): void {
+  const items = tabItems.querySelectorAll('.tab-item');
+  for (const el of items) {
+    if (!el.classList.contains('active')) continue;
+    const hasDot = el.querySelector('.tab-dirty');
+    if (tab.content !== tab.savedContent && !hasDot) {
+      const dot = document.createElement('span');
+      dot.className = 'tab-dirty';
+      el.insertBefore(dot, el.firstChild);
+    } else if (tab.content === tab.savedContent && hasDot) {
+      hasDot.remove();
+    }
+    break;
+  }
+}
+
+function tabStartPolling(): void {
+  clearInterval(fsaFileTimer);
+  const tab = tabGetActive();
+  if (!tab?.fileHandle) return;
+
+  let lastMod = 0;
+  tab.fileHandle.getFile().then(f => { lastMod = f.lastModified; }).catch(() => {});
+
+  fsaFileTimer = window.setInterval(async () => {
+    try {
+      const file = await tab.fileHandle!.getFile();
+      if (file.lastModified !== lastMod) {
+        lastMod = file.lastModified;
+        const content = await file.text();
+        if (content !== editorView.state.doc.toString()) {
+          editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: content } });
+        }
+      }
+    } catch { clearInterval(fsaFileTimer); }
+  }, 1500);
+}
+
+function tabInit(): void {
+  const stored = tabLoadAll();
+  if (stored.length > 0) {
+    tabs = stored;
+    activeTabId = tabs[0].id;
+    localStorage.removeItem(STORAGE_KEY);
+  } else {
+    const oldContent = localStorage.getItem(STORAGE_KEY);
+    const tab = tabCreate('Untitled', oldContent ?? undefined);
+    activeTabId = tab.id;
+    localStorage.removeItem(STORAGE_KEY);
+  }
+  tabRenderBar();
+}
+
+newTabBtn.addEventListener('click', () => {
+  const tab = tabCreate('Untitled');
+  tabSwitch(tab.id);
+});
+
+// ── Version History ────────────────────────────────────────────────────────────
+
+interface Snapshot {
+  content: string;
+  timestamp: number;
+}
+
+const HISTORY_PREFIX = 'md-history-';
+const MAX_SNAPSHOTS = 50;
+const SNAPSHOT_DEBOUNCE = 30000;
+let snapshotTimer = 0;
+
+function historyKey(tabId: string): string {
+  return `${HISTORY_PREFIX}${tabId}`;
+}
+
+function loadSnapshots(tabId: string): Snapshot[] {
+  const raw = localStorage.getItem(historyKey(tabId));
+  if (!raw) return [];
+  try { return JSON.parse(raw); } catch { return []; }
+}
+
+function saveSnapshots(tabId: string, snapshots: Snapshot[]): void {
+  localStorage.setItem(historyKey(tabId), JSON.stringify(snapshots));
+}
+
+function tabTakeSnapshot(tabId: string): void {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab) return;
+  const snapshots = loadSnapshots(tabId);
+  const last = snapshots[snapshots.length - 1];
+  if (last && last.content === tab.content) return;
+
+  snapshots.push({ content: tab.content, timestamp: Date.now() });
+  while (snapshots.length > MAX_SNAPSHOTS) snapshots.shift();
+  saveSnapshots(tabId, snapshots);
+}
+
+function scheduleSnapshot(tabId: string): void {
+  clearTimeout(snapshotTimer);
+  snapshotTimer = window.setTimeout(() => tabTakeSnapshot(tabId), SNAPSHOT_DEBOUNCE);
+}
+
+function formatTimeAgo(ts: number): string {
+  const diff = Date.now() - ts;
+  if (diff < 60000) return 'Just now';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)} min ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)} h ago`;
+  return `${Math.floor(diff / 86400000)} d ago`;
+}
+
+function formatDate(ts: number): string {
+  const d = new Date(ts);
+  const date = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  return `${date} ${time}`;
+}
+
+window.addEventListener('pagehide', () => {
+  if (activeTabId) tabTakeSnapshot(activeTabId);
+});
+
 const INITIAL = `# Markdown Previewer
 
 Write **Markdown** on the left — see the result on the right, instantly.
@@ -243,8 +517,10 @@ const vimCompartment = new Compartment();
 let wrapEnabled = true;
 let vimEnabled = localStorage.getItem(VIM_KEY) === '1';
 
+tabInit();
+
 const editorView = new EditorView({
-  doc: localStorage.getItem(STORAGE_KEY) ?? INITIAL,
+  doc: tabGetActive()?.content ?? INITIAL,
   extensions: [
     basicSetup,
     markdown(),
@@ -286,7 +562,13 @@ const editorView = new EditorView({
     EditorView.updateListener.of(update => {
       if (!update.docChanged) return;
       const content = update.state.doc.toString();
-      localStorage.setItem(STORAGE_KEY, content);
+      const tab = tabGetActive();
+      if (tab) {
+        tab.content = content;
+        tabSaveContent(tab);
+        tabToggleDirty(tab);
+        scheduleSnapshot(tab.id);
+      }
       clearTimeout(debounceTimer);
       debounceTimer = window.setTimeout(() => render(content), 60);
     }),
@@ -339,7 +621,13 @@ clearBtn.addEventListener('click', () => {
     editorView.dispatch({
       changes: { from: 0, to: editorView.state.doc.length, insert: '' },
     });
-    localStorage.removeItem(STORAGE_KEY);
+    const tab = tabGetActive();
+    if (tab) {
+      tab.content = '';
+      tab.savedContent = '';
+      tabSaveContent(tab);
+      tabRenderBar();
+    }
     render('');
   }
 });
@@ -526,6 +814,107 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// ── History panel UI ───────────────────────────────────────────────────────────
+
+const historyBtn = document.getElementById('history-btn') as HTMLButtonElement;
+const historyPanel = document.getElementById('history-panel') as HTMLElement;
+const historyBackdrop = document.getElementById('history-backdrop') as HTMLElement;
+const historyList = document.getElementById('history-list') as HTMLElement;
+const historyCount = document.getElementById('history-count') as HTMLElement;
+const historyCloseBtn = document.getElementById('history-close-btn') as HTMLButtonElement;
+
+function openHistoryPanel(): void {
+  const tab = tabGetActive();
+  if (!tab) return;
+  const snapshots = loadSnapshots(tab.id);
+  renderHistoryList(snapshots);
+  historyPanel.classList.add('open');
+  historyBackdrop.classList.add('open');
+}
+
+function closeHistoryPanel(): void {
+  historyPanel.classList.remove('open');
+  historyBackdrop.classList.remove('open');
+}
+
+function renderHistoryList(snapshots: Snapshot[]): void {
+  historyList.innerHTML = '';
+  if (snapshots.length === 0) {
+    historyList.innerHTML = '<div class="history-empty" style="padding:24px;text-align:center;color:var(--text-muted)">No saved versions yet</div>';
+    historyCount.textContent = '0 versions';
+    return;
+  }
+  historyCount.textContent = `${snapshots.length} version${snapshots.length !== 1 ? 's' : ''}`;
+
+  for (let i = snapshots.length - 1; i >= 0; i--) {
+    const snap = snapshots[i];
+    const item = document.createElement('div');
+    item.className = 'history-item';
+
+    const info = document.createElement('div');
+    info.className = 'history-item-info';
+
+    const time = document.createElement('div');
+    time.className = 'history-item-time';
+    time.textContent = formatTimeAgo(snap.timestamp);
+    info.appendChild(time);
+
+    const date = document.createElement('div');
+    date.className = 'history-item-date';
+    date.textContent = formatDate(snap.timestamp);
+    info.appendChild(date);
+
+    const preview = document.createElement('div');
+    preview.className = 'history-item-preview';
+    const firstLine = snap.content.split('\n')[0].trim();
+    preview.textContent = firstLine || '(empty)';
+    info.appendChild(preview);
+
+    item.appendChild(info);
+
+    const restore = document.createElement('button');
+    restore.className = 'history-restore-btn';
+    restore.textContent = 'Restore';
+    restore.addEventListener('click', (e) => {
+      e.stopPropagation();
+      doRestoreSnapshot(snap.content);
+    });
+    item.appendChild(restore);
+
+    item.addEventListener('click', () => doRestoreSnapshot(snap.content));
+    historyList.appendChild(item);
+  }
+}
+
+function doRestoreSnapshot(content: string): void {
+  const current = editorView.state.doc.toString();
+  if (current === content) { closeHistoryPanel(); return; }
+  const tab = tabGetActive();
+  if (tab) tabTakeSnapshot(tab.id);
+  editorView.dispatch({
+    changes: { from: 0, to: editorView.state.doc.length, insert: content },
+  });
+  closeHistoryPanel();
+}
+
+historyBtn.addEventListener('click', () => {
+  if (historyPanel.classList.contains('open')) {
+    closeHistoryPanel();
+  } else {
+    openHistoryPanel();
+  }
+});
+
+historyCloseBtn.addEventListener('click', closeHistoryPanel);
+historyBackdrop.addEventListener('click', closeHistoryPanel);
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && historyPanel.classList.contains('open')) {
+    closeHistoryPanel();
+    historyBtn.focus();
+  }
+});
+
 fullscreenBtn.addEventListener('click', () => {
   if (!document.fullscreenElement) {
     document.documentElement.requestFullscreen();
@@ -539,6 +928,85 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 printBtn.addEventListener('click', () => window.print());
+
+// ── Zen mode ───────────────────────────────────────────────────────────────────
+
+const zenBtn = document.getElementById('zen-btn') as HTMLButtonElement;
+const zenExitBtn = document.getElementById('zen-exit-btn') as HTMLButtonElement;
+let zenEnabled = false;
+
+function toggleZen(): void {
+  zenEnabled = !zenEnabled;
+  document.body.classList.toggle('zen-mode', zenEnabled);
+  zenBtn.classList.toggle('active', zenEnabled);
+  if (!zenEnabled) {
+    // close any open panels when exiting zen
+    tocPanel.classList.remove('active');
+    tocBtn.classList.remove('active');
+    closeEmojiPicker();
+    closeHistoryPanel();
+  }
+}
+
+zenBtn.addEventListener('click', toggleZen);
+zenExitBtn.addEventListener('click', toggleZen);
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && zenEnabled) {
+    if (emojiPicker.classList.contains('open') || historyPanel.classList.contains('open')) return;
+    toggleZen();
+  }
+});
+
+// ── Custom preview CSS ─────────────────────────────────────────────────────────
+
+const cssBtn = document.getElementById('custom-css-btn') as HTMLButtonElement;
+const cssInput = document.getElementById('custom-css-input') as HTMLInputElement;
+const CUSTOM_CSS_KEY = 'md-custom-css';
+
+function applyCustomCss(css: string): void {
+  let style = document.getElementById('custom-preview-css');
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'custom-preview-css';
+    document.head.appendChild(style);
+  }
+  style.textContent = css;
+  cssBtn.classList.toggle('active', !!css);
+}
+
+function loadCustomCss(): void {
+  const saved = localStorage.getItem(CUSTOM_CSS_KEY);
+  if (saved) applyCustomCss(saved);
+}
+
+function removeCustomCss(): void {
+  const style = document.getElementById('custom-preview-css');
+  if (style) style.remove();
+  localStorage.removeItem(CUSTOM_CSS_KEY);
+  cssBtn.classList.remove('active');
+}
+
+cssBtn.addEventListener('click', () => {
+  const hasCss = !!document.getElementById('custom-preview-css');
+  if (hasCss && confirm('Remove custom preview CSS?')) {
+    removeCustomCss();
+  } else if (!hasCss) {
+    cssInput.value = '';
+    cssInput.click();
+  }
+});
+
+cssInput.addEventListener('change', async () => {
+  const file = cssInput.files?.[0];
+  if (!file) return;
+  const css = await file.text();
+  localStorage.setItem(CUSTOM_CSS_KEY, css);
+  applyCustomCss(css);
+});
+
+// restore custom css on page load
+loadCustomCss();
 
 // synchronized scrolling - tracks which pane is the scroll source to avoid feedback loops
 // without throttling user events (which caused the jerky feel)
@@ -596,7 +1064,7 @@ vimBtn.classList.toggle('active', vimEnabled);
 window.addEventListener('load', () => {
   getMermaid()?.initialize({ startOnLoad: false, theme: isDarkTheme(theme) ? 'dark' : 'default' });
 });
-render(localStorage.getItem(STORAGE_KEY) ?? INITIAL);
+render(tabGetActive()?.content ?? INITIAL);
 
 // ── File System Access API ────────────────────────────────────────────────────
 
@@ -607,7 +1075,6 @@ const openFileNameEl = document.getElementById('open-file-name') as HTMLElement;
 
 // -- Open File -----------------------------------------------------------------
 
-let fsaFileHandle: FileSystemFileHandle | null = null;
 let fsaFileTimer = 0;
 
 function openLocalFileFallback(): void {
@@ -618,14 +1085,8 @@ function openLocalFileFallback(): void {
     const file = input.files?.[0];
     if (!file) return;
     const content = await file.text();
-    editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: content } });
-    localStorage.setItem(STORAGE_KEY, content);
-    openFileNameEl.textContent = file.name;
-    openFileNameEl.style.display = '';
-    // can't save back without FSA handle
-    saveFileBtn.style.display = 'none';
-    clearInterval(fsaFileTimer);
-    fsaFileHandle = null;
+    const tab = tabCreate(file.name, content);
+    tabSwitch(tab.id);
   };
   input.click();
 }
@@ -639,42 +1100,24 @@ async function openLocalFile(): Promise<void> {
     const [handle] = await (window as any).showOpenFilePicker({
       types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown'] } }],
     }) as FileSystemFileHandle[];
-    fsaFileHandle = handle;
     const file = await handle.getFile();
     const content = await file.text();
-    editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: content } });
-    localStorage.setItem(STORAGE_KEY, content);
-    openFileNameEl.textContent = file.name;
-    openFileNameEl.style.display = '';
-    saveFileBtn.style.display = '';
-    startFsaFilePolling(handle, file.lastModified);
+    const tab = tabCreate(file.name, content, handle);
+    tabSwitch(tab.id);
   } catch { /* user cancelled */ }
 }
 
-function startFsaFilePolling(handle: FileSystemFileHandle, initMod: number): void {
-  clearInterval(fsaFileTimer);
-  let last = initMod;
-  fsaFileTimer = window.setInterval(async () => {
-    try {
-      const file = await handle.getFile();
-      if (file.lastModified !== last) {
-        last = file.lastModified;
-        const content = await file.text();
-        if (content !== editorView.state.doc.toString()) {
-          editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: content } });
-        }
-      }
-    } catch { clearInterval(fsaFileTimer); }
-  }, 1500);
-}
-
 async function saveLocalFile(): Promise<void> {
-  if (!fsaFileHandle) return;
+  const tab = tabGetActive();
+  if (!tab?.fileHandle) return;
   const content = editorView.state.doc.toString();
   try {
-    const writable = await (fsaFileHandle as any).createWritable();
+    const writable = await (tab.fileHandle as any).createWritable();
     await writable.write(content);
     await writable.close();
+    tab.savedContent = content;
+    tabSaveContent(tab);
+    tabRenderBar();
     saveFileBtn.textContent = 'Saved ✓';
     setTimeout(() => { saveFileBtn.textContent = 'Save'; }, 1500);
   } catch {
@@ -683,7 +1126,7 @@ async function saveLocalFile(): Promise<void> {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = openFileNameEl.textContent || 'document.md';
+    a.download = tab.title;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -694,7 +1137,8 @@ saveFileBtn.addEventListener('click', saveLocalFile);
 
 // Mod+S saves the open file
 document.addEventListener('keydown', (e: KeyboardEvent) => {
-  if ((e.metaKey || e.ctrlKey) && e.key === 's' && fsaFileHandle) {
+  const tab = tabGetActive();
+  if ((e.metaKey || e.ctrlKey) && e.key === 's' && tab?.fileHandle) {
     e.preventDefault();
     saveLocalFile();
   }

@@ -38,12 +38,22 @@
       <button id="scroll-btn">Sync</button>
       <button id="emoji-btn" title="Insert emoji shortcode">😀</button>
       <button id="toc-btn" title="Table of contents">TOC</button>
+      <button id="history-btn" title="Version history">History</button>
       <button id="vim-btn">Vim</button>
+      <button id="zen-btn" title="Zen mode — hide everything but editor and preview">Zen</button>
       <button id="fullscreen-btn">Full ⛶</button>
       <button id="print-btn" title="Print or export as PDF">Print</button>
+      <button id="custom-css-btn" title="Load custom preview CSS">CSS</button>
       <button id="theme-btn" title="Switch color theme">Dark</button>
     </div>
   </header>
+
+  <div id="tab-bar" class="tab-bar">
+    <div class="tab-list" id="tab-list">
+      <div id="tab-items"></div>
+      <button id="new-tab-btn" class="new-tab-btn" title="New tab">+</button>
+    </div>
+  </div>
 
   <div id="panes">
     <div id="editor" aria-label="Markdown editor"></div>
@@ -91,6 +101,20 @@
     </div>
     <div id="emoji-grid"></div>
   </div>
+
+  <div id="history-backdrop" class="history-backdrop"></div>
+  <div id="history-panel">
+    <div class="history-header">
+      <span class="history-title">Version History</span>
+      <span id="history-count" class="history-count"></span>
+      <button id="history-close-btn">✕</button>
+    </div>
+    <div id="history-list"></div>
+  </div>
+
+  <input type="file" id="custom-css-input" accept=".css" style="display:none" />
+
+  <button id="zen-exit-btn" title="Exit Zen mode (Esc)">Exit Zen</button>
 
   <script type="module" src="/src/main.ts"></script>
 </body>

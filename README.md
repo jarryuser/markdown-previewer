@@ -208,15 +208,15 @@ npm run build     # production build -> dist/
 - [x] **`--theme` flag** - pick a color scheme for terminal and TUI output: `mdp README.md -t --theme nord`
 - [x] **Emoji shortcodes** - turns `:smile:` into 😄 in the preview, GitHub-style
 - [x] **Footnotes** - renders footnote syntax (`[^1]`) in the preview
+- [x] **Multiple tabs** - work on several documents at once and switch between them, without relying on the File System Access API
+- [x] **Version history** - automatic content snapshots in localStorage with the option to restore an earlier version
+- [x] **Zen mode** - hides the toolbar and secondary panels, leaving only the editor and preview
+- [x] **Custom preview CSS** - load a user-provided stylesheet to preview the document with different styling
 
 ### Planned
 
 **Web editor**
 
-- [ ] **Multiple tabs** - work on several documents at once and switch between them, without relying on the File System Access API
-- [ ] **Version history** - automatic content snapshots in localStorage with the option to restore an earlier version
-- [ ] **Zen mode** - hides the toolbar and secondary panels, leaving only the editor and preview
-- [ ] **Custom preview CSS** - load a user-provided stylesheet to preview the document with different styling
 - [ ] **Reading time estimate** - shown next to the word and character counter
 - [ ] **Keyboard shortcuts cheatsheet** - an overlay listing every shortcut, similar to `?` in the TUI
 

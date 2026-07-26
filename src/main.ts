@@ -1011,6 +1011,129 @@ cssInput.addEventListener('change', async () => {
 // restore custom css on page load
 loadCustomCss();
 
+// ── Keyboard shortcuts cheatsheet ──────────────────────────────────────────────
+
+interface ShortcutGroup {
+  title: string;
+  items: { keys: string[][]; desc: string }[];
+}
+
+const cheatsheetBtn = document.getElementById('cheatsheet-btn') as HTMLButtonElement;
+const cheatsheetPanel = document.getElementById('cheatsheet-panel') as HTMLElement;
+const cheatsheetBody = document.getElementById('cheatsheet-body') as HTMLElement;
+const cheatsheetBackdrop = document.getElementById('cheatsheet-backdrop') as HTMLElement;
+const cheatsheetCloseBtn = document.getElementById('cheatsheet-close-btn') as HTMLButtonElement;
+
+const MOD = navigator.platform.includes('Mac') ? '⌘' : 'Ctrl';
+
+const SHORTCUTS: ShortcutGroup[] = [
+  {
+    title: 'Formatting',
+    items: [
+      { keys: [[MOD, 'B']], desc: 'Bold' },
+      { keys: [[MOD, 'I']], desc: 'Italic' },
+      { keys: [[MOD, 'K']], desc: 'Insert link' },
+      { keys: [[MOD, 'Shift', 'C']], desc: 'Inline code' },
+      { keys: [['Tab']], desc: 'Insert 2 spaces' },
+    ],
+  },
+  {
+    title: 'General',
+    items: [
+      { keys: [[MOD, 'F']], desc: 'Find / Replace' },
+      { keys: [[MOD, 'S']], desc: 'Save file (when open)' },
+      { keys: [['Escape']], desc: 'Close panel / exit Zen' },
+      { keys: [['?']], desc: 'Open this cheatsheet' },
+    ],
+  },
+  {
+    title: 'Vim mode',
+    items: [
+      { keys: [['Esc']], desc: 'Normal mode' },
+      { keys: [['i']], desc: 'Insert mode' },
+      { keys: [['v']], desc: 'Visual mode' },
+      { keys: [['j', 'k']], desc: 'Move cursor up / down' },
+      { keys: [['h', 'l']], desc: 'Move cursor left / right' },
+      { keys: [['dd']], desc: 'Delete line' },
+      { keys: [['u']], desc: 'Undo' },
+      { keys: [['Ctrl', 'R']], desc: 'Redo' },
+      { keys: [[':', 'w']], desc: 'Save file' },
+    ],
+  },
+  {
+    title: 'Directory mode (FSA)',
+    items: [
+      { keys: [['Alt', '←'], ['Alt', '→']], desc: 'Back / Forward' },
+      { keys: [['/']], desc: 'Filter files' },
+      { keys: [['c']], desc: 'Collapse / expand all' },
+      { keys: [['Escape']], desc: 'Close directory' },
+    ],
+  },
+];
+
+function renderCheatsheet(): void {
+  cheatsheetBody.innerHTML = '';
+  for (const group of SHORTCUTS) {
+    const g = document.createElement('div');
+    g.className = 'cs-group';
+    const title = document.createElement('div');
+    title.className = 'cs-group-title';
+    title.textContent = group.title;
+    g.appendChild(title);
+    for (const item of group.items) {
+      const row = document.createElement('div');
+      row.className = 'cs-row';
+      const label = document.createElement('span');
+      label.className = 'cs-label';
+      label.textContent = item.desc;
+      row.appendChild(label);
+      const keysEl = document.createElement('span');
+      keysEl.className = 'cs-keys';
+      item.keys.forEach((combo, ci) => {
+        if (ci > 0) { const plus = document.createElement('span'); plus.className = 'cs-key-plus'; plus.textContent = 'or'; keysEl.appendChild(plus); }
+        combo.forEach((k, ki) => {
+          const key = document.createElement('span');
+          key.className = 'cs-key';
+          key.textContent = k;
+          keysEl.appendChild(key);
+          if (ki < combo.length - 1) { const plus = document.createElement('span'); plus.className = 'cs-key-plus'; plus.textContent = '+'; keysEl.appendChild(plus); }
+        });
+      });
+      row.appendChild(keysEl);
+      g.appendChild(row);
+    }
+    cheatsheetBody.appendChild(g);
+  }
+}
+
+function openCheatsheet(): void {
+  renderCheatsheet();
+  cheatsheetPanel.classList.add('open');
+  cheatsheetBackdrop.classList.add('open');
+}
+
+function closeCheatsheet(): void {
+  cheatsheetPanel.classList.remove('open');
+  cheatsheetBackdrop.classList.remove('open');
+}
+
+cheatsheetBtn.addEventListener('click', () => {
+  if (cheatsheetPanel.classList.contains('open')) { closeCheatsheet(); } else { openCheatsheet(); }
+});
+
+cheatsheetCloseBtn.addEventListener('click', closeCheatsheet);
+cheatsheetBackdrop.addEventListener('click', closeCheatsheet);
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && cheatsheetPanel.classList.contains('open')) { closeCheatsheet(); cheatsheetBtn.focus(); }
+  if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    const tag = (e.target as HTMLElement)?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    e.preventDefault();
+    if (cheatsheetPanel.classList.contains('open')) { closeCheatsheet(); } else { openCheatsheet(); }
+  }
+});
+
 // synchronized scrolling - tracks which pane is the scroll source to avoid feedback loops
 // without throttling user events (which caused the jerky feel)
 let syncEnabled = false;

@@ -49,6 +49,7 @@
       <button id="zen-btn" title="Zen mode — hide everything but editor and preview">Zen</button>
       <button id="fullscreen-btn" title="Toggle fullscreen">⛶</button>
       <button id="print-btn" title="Print or export as PDF">Print</button>
+      <button id="cheatsheet-btn" title="Keyboard shortcuts (?)">?</button>
       <span class="tb-sep"></span>
       <button id="custom-css-btn" title="Load custom preview CSS">CSS</button>
       <button id="theme-btn" title="Switch color theme">Dark</button>
@@ -117,6 +118,15 @@
       <button id="history-close-btn">✕</button>
     </div>
     <div id="history-list"></div>
+  </div>
+
+  <div id="cheatsheet-backdrop" class="cheatsheet-backdrop"></div>
+  <div id="cheatsheet-panel">
+    <div class="cheatsheet-header">
+      <span class="cheatsheet-title">Keyboard Shortcuts</span>
+      <button id="cheatsheet-close-btn">✕</button>
+    </div>
+    <div id="cheatsheet-body"></div>
   </div>
 
   <input type="file" id="custom-css-input" accept=".css" style="display:none" />

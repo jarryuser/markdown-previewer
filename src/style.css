@@ -117,8 +117,16 @@ html, body {
 .toolbar-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-left: auto;
+}
+
+.tb-sep {
+  width: 0;
+  height: 20px;
+  border-left: 1px solid var(--border, #d0d7de);
+  flex-shrink: 0;
+  margin: 0 2px;
 }
 
 .stat {
@@ -130,14 +138,16 @@ html, body {
 button {
   background: var(--btn-bg);
   border: 1px solid var(--btn-border);
-  border-radius: var(--radius);
+  border-radius: 4px;
   color: var(--text);
   cursor: pointer;
-  font-size: 13px;
-  padding: 4px 12px;
+  font-size: 12px;
+  padding: 3px 8px;
   transition: background .1s;
   white-space: nowrap;
 }
+
+.toolbar-actions button { padding: 3px 10px; }
 
 button:hover { background: var(--btn-hover); }
 button:active { opacity: .8; }

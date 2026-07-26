@@ -927,7 +927,7 @@ fullscreenBtn.addEventListener('click', () => {
 });
 
 document.addEventListener('fullscreenchange', () => {
-  fullscreenBtn.textContent = document.fullscreenElement ? 'Exit ⛶' : 'Full ⛶';
+  fullscreenBtn.textContent = '⛶';
 });
 
 printBtn.addEventListener('click', () => window.print());

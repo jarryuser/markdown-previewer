@@ -51,6 +51,7 @@ marked.use({
 const preview = document.getElementById('preview') as HTMLElement;
 const wordCount = document.getElementById('word-count') as HTMLElement;
 const charCount = document.getElementById('char-count') as HTMLElement;
+const readingTime = document.getElementById('reading-time') as HTMLElement;
 const copyBtn = document.getElementById('copy-btn') as HTMLButtonElement;
 const exportBtn = document.getElementById('export-btn') as HTMLButtonElement;
 const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
@@ -442,6 +443,8 @@ function render(md: string): void {
   const words = text === '' ? 0 : text.split(/\s+/).length;
   wordCount.textContent = `${words} word${words !== 1 ? 's' : ''}`;
   charCount.textContent = `${md.length} chars`;
+  const mins = Math.ceil(words / 200);
+  readingTime.textContent = mins < 1 ? '< 1 min read' : `${mins} min read`;
 }
 
 // toggles markers around the selection: adds them if absent, removes if already present

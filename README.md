@@ -212,12 +212,11 @@ npm run build     # production build -> dist/
 - [x] **Version history** - automatic content snapshots in localStorage with the option to restore an earlier version
 - [x] **Zen mode** - hides the toolbar and secondary panels, leaving only the editor and preview
 - [x] **Custom preview CSS** - load a user-provided stylesheet to preview the document with different styling
+- [x] **Reading time estimate** - shown next to the word and character counter
 
 ### Planned
 
 **Web editor**
-
-- [ ] **Reading time estimate** - shown next to the word and character counter
 - [ ] **Keyboard shortcuts cheatsheet** - an overlay listing every shortcut, similar to `?` in the TUI
 
 **CLI**

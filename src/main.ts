@@ -717,6 +717,152 @@ wrapBtn.addEventListener('click', () => {
   });
 });
 
+// ── Document font ────────────────────────────────────────────────────────────
+
+const FONT_KEY = 'md-font';
+const fontSelect = document.getElementById('font-select') as HTMLSelectElement;
+
+const FONTS: Record<string, string> = {
+  system: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif",
+  serif: "Georgia, 'Times New Roman', serif",
+  sans: "'Helvetica Neue', Helvetica, Arial, sans-serif",
+  mono: "'SF Mono', 'Fira Code', Menlo, Consolas, monospace",
+  times: "'Times New Roman', Times, serif",
+  palatino: "Palatino, 'Palatino Linotype', 'Book Antiqua', Georgia, serif",
+  garamond: "Garamond, Cambria, Georgia, serif",
+  cambria: "Cambria, Cochin, Georgia, serif",
+  arial: 'Arial, Helvetica, sans-serif',
+  verdana: 'Verdana, Geneva, Tahoma, sans-serif',
+  tahoma: 'Tahoma, Verdana, Geneva, sans-serif',
+  trebuchet: "'Trebuchet MS', 'Lucida Grande', 'Segoe UI', sans-serif",
+  courier: "'Courier New', Courier, 'Lucida Console', monospace",
+  impact: "Impact, Haettenschweiler, 'Arial Black', sans-serif",
+  comic: "'Comic Sans MS', 'Comic Sans', Chalkboard, cursive",
+};
+
+function applyFont(): void {
+  const stack = FONTS[fontSelect.value] ?? FONTS.system;
+  document.documentElement.style.setProperty('--prose-font', stack);
+  fontSelect.style.fontFamily = stack;
+  localStorage.setItem(FONT_KEY, fontSelect.value);
+}
+
+const storedFont = localStorage.getItem(FONT_KEY);
+if (storedFont && FONTS[storedFont]) fontSelect.value = storedFont;
+applyFont();
+
+fontSelect.addEventListener('change', applyFont);
+
+// ── Per-line / per-selection font ───────────────────────────────────────────
+// Applies a font to selected text or (with no selection) the whole current
+// line by wrapping it in `<span style="font-family:…">…</span>`, which Markdown
+// honors for inline content. Choosing a font again for the same span unwraps it.
+
+const lineFontSelect = document.getElementById('line-font-select') as HTMLSelectElement;
+const SPAN_OPEN_RE = /[ \t]*(<span style="font-family:[^"]*">)$/;
+const SPAN_PREFIX = '<span style="font-family:';
+const SPAN_CLOSE = '</span>';
+
+// length of a leading Markdown block marker (#, -, >, task box, …) in `text`
+function leadingBlockMarkerLen(text: string): number {
+  const m = /^(\s*(?:(?:#{1,6}\s)|(?:[-*+]\s)|(?:\d+[.)]\s)|(?:>\s?)|(?:\[[ xX]\]\s)))/.exec(text);
+  return m ? m[0].length : 0;
+}
+
+function lineFontWrap(stack: string): void {
+  const state = editorView.state;
+  const sel = state.selection.main;
+  let from = sel.from;
+  let to = sel.to;
+
+  // no selection -> use the current line
+  if (from === to) {
+    const line = state.doc.lineAt(from);
+    from = line.from;
+    to = line.to;
+    if (from === to) return; // empty line
+  }
+
+  // skip a leading block marker so # - > list items stay valid
+  from += leadingBlockMarkerLen(state.sliceDoc(from, to));
+
+  const slice = state.sliceDoc(from, to);
+  // spans must not cross blank lines / blocks — fall back to the cursor line
+  if (slice.includes('\n\n')) {
+    const line = state.doc.lineAt(from);
+    from = line.from;
+    to = line.to;
+    if (from === to) return;
+    from += leadingBlockMarkerLen(state.sliceDoc(from, to));
+  }
+  if (from >= to) return;
+
+  const open = `<span style="font-family:${stack}">`;
+
+  // already wrapped in exactly this font -> unwrap
+  const before = state.sliceDoc(Math.max(0, from - 120), from);
+  if (SPAN_OPEN_RE.test(before)
+      && state.sliceDoc(to, to + SPAN_CLOSE.length) === SPAN_CLOSE) {
+    const m = SPAN_OPEN_RE.exec(before)!;
+    const openStart = from - m[0].length;
+    editorView.dispatch({
+      changes: [
+        { from: openStart, to: from },
+        { from: to, to: to + SPAN_CLOSE.length },
+      ],
+      selection: EditorSelection.range(openStart, openStart + (to - from)),
+      userEvent: 'input',
+    });
+    editorView.focus();
+    return;
+  }
+
+  editorView.dispatch({
+    changes: [
+      { from, insert: open },
+      { from: to, insert: SPAN_CLOSE },
+    ],
+    selection: EditorSelection.range(from + open.length, to + open.length),
+    userEvent: 'input',
+  });
+  editorView.focus();
+}
+
+function lineFontRemove(): void {
+  const state = editorView.state;
+  const cursor = state.selection.main.from;
+  const start = Math.max(0, cursor - 300);
+  const head = state.sliceDoc(start, cursor);
+  const idx = head.lastIndexOf(SPAN_PREFIX);
+  if (idx === -1) return;
+  const openStart = start + idx;
+  // the open tag may be cut by the caret — finish it by looking forward
+  const after = state.sliceDoc(openStart + SPAN_PREFIX.length, openStart + SPAN_PREFIX.length + 200);
+  const closeBracket = after.indexOf('">');
+  if (closeBracket === -1) return;
+  const openEnd = openStart + SPAN_PREFIX.length + closeBracket + 2;
+  const rest = state.sliceDoc(openEnd, openEnd + 600);
+  const closeAt = rest.indexOf(SPAN_CLOSE);
+  if (closeAt === -1 || cursor > openEnd + closeAt) return;
+  const closeStart = openEnd + closeAt;
+  editorView.dispatch({
+    changes: [
+      { from: openStart, to: openEnd },
+      { from: closeStart, to: closeStart + SPAN_CLOSE.length },
+    ],
+    selection: EditorSelection.range(openStart, openStart + (closeStart - openEnd)),
+    userEvent: 'input',
+  });
+  editorView.focus();
+}
+
+lineFontSelect.addEventListener('change', () => {
+  const id = lineFontSelect.value;
+  lineFontSelect.value = '';
+  if (id === 'remove') lineFontRemove();
+  else if (FONTS[id]) lineFontWrap(FONTS[id]);
+});
+
 let fontSize = parseInt(localStorage.getItem(FONT_SIZE_KEY) ?? '14', 10);
 
 function applyFontSize(): void {

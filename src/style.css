@@ -1031,6 +1031,170 @@ button.active:hover { opacity: .85; }
   background: #333;
 }
 
+/* ── PDF preview (live side pane) ──────────────────────────────────────────── */
+#pdf-live {
+  display: none;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  flex-direction: column;
+}
+
+#preview-pane.has-pdf #preview,
+#preview-pane.has-pdf #toc { display: none; }
+
+#preview-pane.has-pdf #pdf-live { display: flex; }
+
+.pdf-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.pdf-bar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pdf-live-count {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.pdf-bar-spacer { flex: 1; }
+
+#pdf-download-btn {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+#pdf-download-btn:disabled { opacity: .55; cursor: default; }
+
+.pdf-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.pdf-close-btn:hover { background: var(--border); }
+
+#pdf-live-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  background: #dde3ea;
+}
+
+.pdf-scale-wrap {
+  flex: none;
+  overflow: hidden;
+  align-self: flex-start;
+}
+
+/* sheets are scaled down with a transform so the whole page fits the pane */
+.pdf-stage {
+  width: 793.7px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  transform-origin: top left;
+}
+
+/* canonical sheets (offscreen, natural size) — downloadPdf rasterizes these */
+#pdf-canonical {
+  position: fixed;
+  top: 0;
+  left: -99999px;
+  pointer-events: none;
+}
+
+.pdf-empty {
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 40px 0;
+}
+
+/* sheet size/padding are set inline by JS (A4 @96dpi) */
+.pdf-page {
+  /* CSS custom properties inherit from <html data-theme=…>; pin the light
+     palette so sheets always render as white pages in every app theme */
+  --bg:         #ffffff;
+  --bg-toolbar: #f6f8fa;
+  --bg-editor:  #ffffff;
+  --bg-preview: #ffffff;
+  --border:     #d0d7de;
+  --divider:    #d0d7de;
+  --text:       #1f2328;
+  --text-muted: #656d76;
+  --accent:     #0969da;
+  --btn-bg:     #f6f8fa;
+  --btn-border: #d0d7de;
+  --btn-hover:  #eaeef2;
+  --logo-bg:    #0969da;
+  --logo-text:  #ffffff;
+  width: 793.7px;
+  background: #fff;
+  box-shadow: 0 2px 14px rgba(0,0,0,.25);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* The [data-theme="dark"/"nord"] .hljs overrides match sheets nested under
+   <html data-theme=…>, so re-assert the light GitHub token colors (later in
+   the cascade wins on equal specificity). */
+.pdf-page .hljs { color: #24292e; background: transparent; }
+.pdf-page .hljs-keyword,
+.pdf-page .hljs-selector-tag,
+.pdf-page .hljs-template-tag,
+.pdf-page .hljs-variable.literal_ { color: #d73a49; }
+.pdf-page .hljs-string,
+.pdf-page .hljs-regexp,
+.pdf-page .hljs-meta .hljs-string { color: #032f62; }
+.pdf-page .hljs-title,
+.pdf-page .hljs-title.class_,
+.pdf-page .hljs-title.function_,
+.pdf-page .hljs-function { color: #6f42c1; }
+.pdf-page .hljs-attr,
+.pdf-page .hljs-attribute,
+.pdf-page .hljs-literal,
+.pdf-page .hljs-number,
+.pdf-page .hljs-operator,
+.pdf-page .hljs-variable,
+.pdf-page .hljs-meta,
+.pdf-page .hljs-selector-attr,
+.pdf-page .hljs-selector-class,
+.pdf-page .hljs-selector-id { color: #005cc5; }
+.pdf-page .hljs-built_in,
+.pdf-page .hljs-symbol { color: #e36209; }
+.pdf-page .hljs-comment,
+.pdf-page .hljs-code,
+.pdf-page .hljs-formula,
+.pdf-page .hljs-params { color: #6a737d; }
+.pdf-page .hljs-name,
+.pdf-page .hljs-quote,
+.pdf-page .hljs-selector-pseudo { color: #22863a; }
+.pdf-page .hljs-subst { color: #24292e; }
+
 /* ── Zen mode ──────────────────────────────────────────────────────────────── */
 body.zen-mode .toolbar,
 body.zen-mode #tab-bar,
@@ -1193,6 +1357,7 @@ body.zen-mode:hover #zen-exit-btn {
   #emoji-picker { display: none !important; }
   #history-panel { display: none !important; }
   #cheatsheet-panel { display: none !important; }
+  #pdf-live, #pdf-canonical { display: none !important; }
   #zen-exit-btn { display: none !important; }
   .toolbar, #tab-bar, #editor, #divider, #toc, #fsa-overlay {
     display: none !important;

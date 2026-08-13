@@ -18,6 +18,8 @@
     "blessed": "^0.1.81",
     "codemirror": "^6.0.2",
     "highlight.js": "^11.9.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "katex": "^0.17.0",
     "marked": "^12.0.0",
     "marked-footnote": "^1.4.0",

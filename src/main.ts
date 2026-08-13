@@ -11,6 +11,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import { vim } from '@replit/codemirror-vim';
 import { openSearchPanel } from '@codemirror/search';
 import styles from './style.css?raw';
+import { buildPdfSheets, downloadPdf, PAGE_W } from './pdf.js';
 
 // strips YAML/TOML frontmatter from Obsidian files before rendering
 function stripFrontmatter(content: string): string {
@@ -445,6 +446,8 @@ function render(md: string): void {
   charCount.textContent = `${md.length} chars`;
   const mins = Math.ceil(words / 200);
   readingTime.textContent = mins < 1 ? '< 1 min read' : `${mins} min read`;
+
+  schedulePdfRebuild();
 }
 
 // toggles markers around the selection: adds them if absent, removes if already present
@@ -1280,13 +1283,126 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// ── PDF preview (live pane) ─────────────────────────────────────────────────
+
+const pdfBtn = document.getElementById('pdf-btn') as HTMLButtonElement;
+const previewPane = document.getElementById('preview-pane') as HTMLElement;
+const pdfLiveScroll = document.getElementById('pdf-live-scroll') as HTMLElement;
+const pdfScaleWrap = document.getElementById('pdf-scale-wrap') as HTMLElement;
+const pdfStage = document.getElementById('pdf-stage') as HTMLElement;
+const pdfCanonical = document.getElementById('pdf-canonical') as HTMLElement;
+const pdfLiveCount = document.getElementById('pdf-live-count') as HTMLElement;
+const pdfCloseBtn = document.getElementById('pdf-close-btn') as HTMLButtonElement;
+const pdfDownloadBtn = document.getElementById('pdf-download-btn') as HTMLButtonElement;
+
+let pdfSheets: HTMLElement[] = [];
+let pdfLiveEnabled = false;
+let pdfRebuildTimer = 0;
+
+function suggestPdfName(): string {
+  const heading = editorView.state.doc.toString().match(/^#\s+(.+)/m)?.[1];
+  return heading
+    ? heading.toLowerCase().replace(/[^\w]+/g, '-').replace(/^-|-$/g, '') + '.pdf'
+    : 'export.pdf';
+}
+
+// scales the visible sheets so a full page fits the pane width without needing
+// horizontal scrolling; the canonical (offscreen) sheets stay at natural size
+function updatePdfScale(): void {
+  const availW = pdfLiveScroll.clientWidth - 32;
+  const k = Math.min(1, availW / PAGE_W);
+  pdfScaleWrap.style.width = `${PAGE_W * k}px`;
+  pdfScaleWrap.style.height = `${pdfStage.offsetHeight * k}px`;
+  pdfStage.style.transform = `scale(${k})`;
+}
+
+function schedulePdfScale(): void {
+  requestAnimationFrame(updatePdfScale);
+}
+
+function rebuildPdf(): void {
+  if (!pdfLiveEnabled) return;
+  pdfCanonical.innerHTML = '';
+  pdfStage.innerHTML = '';
+
+  // build sheets from the same .prose node the editor renders into, so the
+  // preview and the downloaded file use identical markup
+  pdfSheets = buildPdfSheets(preview);
+  pdfLiveCount.textContent = pdfSheets.length === 0
+    ? '0 pages'
+    : `${pdfSheets.length} page${pdfSheets.length !== 1 ? 's' : ''}`;
+
+  for (const sheet of pdfSheets) pdfCanonical.appendChild(sheet);
+
+  if (pdfSheets.length === 0) {
+    pdfStage.innerHTML = '<p class="pdf-empty">Nothing to render — the document is empty.</p>';
+    pdfDownloadBtn.disabled = true;
+  } else {
+    for (const sheet of pdfSheets) pdfStage.appendChild(sheet.cloneNode(true));
+    pdfDownloadBtn.disabled = false;
+  }
+  schedulePdfScale();
+}
+
+// debounced rebuild triggered while typing; no-op when the pane is closed
+function schedulePdfRebuild(): void {
+  if (!pdfLiveEnabled) return;
+  clearTimeout(pdfRebuildTimer);
+  pdfRebuildTimer = window.setTimeout(rebuildPdf, 200);
+}
+
+function openPdfLive(): void {
+  pdfLiveEnabled = true;
+  pdfBtn.classList.add('active');
+  previewPane.classList.add('has-pdf');
+  schedulePdfRebuild();
+}
+
+function closePdfLive(): void {
+  pdfLiveEnabled = false;
+  pdfBtn.classList.remove('active');
+  previewPane.classList.remove('has-pdf');
+}
+
+pdfBtn.addEventListener('click', () => {
+  if (pdfLiveEnabled) closePdfLive();
+  else openPdfLive();
+});
+
+pdfCloseBtn.addEventListener('click', closePdfLive);
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && pdfLiveEnabled) {
+    closePdfLive();
+    pdfBtn.focus();
+  }
+});
+
+new ResizeObserver(() => { if (pdfLiveEnabled) schedulePdfScale(); }).observe(pdfLiveScroll);
+
+pdfDownloadBtn.addEventListener('click', async () => {
+  if (pdfSheets.length === 0) return;
+  pdfDownloadBtn.disabled = true;
+  pdfDownloadBtn.textContent = 'Rendering…';
+  try {
+    await downloadPdf(pdfSheets, suggestPdfName(), (done, total) => {
+      pdfDownloadBtn.textContent = `Page ${done}/${total}…`;
+    });
+  } catch {
+    pdfDownloadBtn.textContent = 'Failed — try again';
+  } finally {
+    pdfDownloadBtn.textContent = 'Download';
+    pdfDownloadBtn.disabled = false;
+  }
+});
+
 // synchronized scrolling - tracks which pane is the scroll source to avoid feedback loops
 // without throttling user events (which caused the jerky feel)
 let syncEnabled = false;
-let syncSource: 'editor' | 'preview' | null = null;
+let syncSource: 'editor' | 'preview' | 'pdf' | null = null;
 let syncTimer = 0;
 
-function claimSource(side: 'editor' | 'preview'): void {
+function claimSource(side: 'editor' | 'preview' | 'pdf'): void {
   syncSource = side;
   clearTimeout(syncTimer);
   syncTimer = window.setTimeout(() => { syncSource = null; }, 150);
@@ -1297,20 +1413,36 @@ scrollBtn.addEventListener('click', () => {
   scrollBtn.classList.toggle('active', syncEnabled);
 });
 
+// the visible right-hand preview: the PDF live pane when open, else #preview
+function syncTarget(): HTMLElement {
+  return pdfLiveEnabled ? pdfLiveScroll : preview;
+}
+
+function syncRatio(el: HTMLElement): number {
+  return el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
+}
+
+function syncApply(target: HTMLElement, ratio: number): void {
+  target.scrollTop = ratio * Math.max(1, target.scrollHeight - target.clientHeight);
+}
+
 editorView.scrollDOM.addEventListener('scroll', () => {
-  if (!syncEnabled || syncSource === 'preview') return;
+  if (!syncEnabled || syncSource === 'preview' || syncSource === 'pdf') return;
   claimSource('editor');
-  const el = editorView.scrollDOM;
-  const ratio = el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
-  preview.scrollTop = ratio * Math.max(1, preview.scrollHeight - preview.clientHeight);
+  syncApply(syncTarget(), syncRatio(editorView.scrollDOM));
 });
 
 preview.addEventListener('scroll', () => {
-  if (!syncEnabled || syncSource === 'editor') return;
+  if (!syncEnabled || syncSource === 'editor' || syncSource === 'pdf') return;
   claimSource('preview');
-  const el = editorView.scrollDOM;
-  const ratio = preview.scrollTop / Math.max(1, preview.scrollHeight - preview.clientHeight);
-  el.scrollTop = ratio * Math.max(1, el.scrollHeight - el.clientHeight);
+  syncApply(editorView.scrollDOM, syncRatio(preview));
+});
+
+// the PDF pane syncs too when it is the active preview
+pdfLiveScroll.addEventListener('scroll', () => {
+  if (!syncEnabled || !pdfLiveEnabled || syncSource === 'editor' || syncSource === 'preview') return;
+  claimSource('pdf');
+  syncApply(editorView.scrollDOM, syncRatio(pdfLiveScroll));
 });
 
 let dragging = false;

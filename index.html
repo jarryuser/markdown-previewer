@@ -85,6 +85,7 @@
       <button id="zen-btn" title="Zen mode — hide everything but editor and preview">Zen</button>
       <button id="fullscreen-btn" title="Toggle fullscreen">⛶</button>
       <button id="print-btn" title="Print or export as PDF">Print</button>
+      <button id="pdf-btn" title="Preview and download as PDF">PDF</button>
       <button id="cheatsheet-btn" title="Keyboard shortcuts (?)">?</button>
       <span class="tb-sep"></span>
       <button id="custom-css-btn" title="Load custom preview CSS">CSS</button>
@@ -107,8 +108,26 @@
     <div id="preview-pane">
       <div id="preview" class="prose" aria-label="Preview"></div>
       <div id="toc" aria-label="Table of contents"></div>
+
+      <div id="pdf-live" aria-label="PDF preview">
+        <div class="pdf-bar">
+          <span class="pdf-bar-title">PDF Preview</span>
+          <span id="pdf-live-count" class="pdf-live-count"></span>
+          <span class="pdf-bar-spacer"></span>
+          <button id="pdf-download-btn" class="pdf-download-btn" title="Download PDF">Download</button>
+          <button id="pdf-close-btn" class="pdf-close-btn" title="Close">✕</button>
+        </div>
+        <div id="pdf-live-scroll">
+          <div id="pdf-scale-wrap" class="pdf-scale-wrap">
+            <div id="pdf-stage" class="pdf-stage"></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
+
+  <!-- canonical A4 sheets for PDF download (offscreen, see style.css) -->
+  <div id="pdf-canonical" aria-hidden="true"></div>
 
   <!-- File System Access: directory overlay -->
   <div id="fsa-overlay" aria-label="Directory viewer">

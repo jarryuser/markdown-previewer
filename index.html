@@ -19,23 +19,26 @@
 </head>
 <body>
   <header class="toolbar">
-    <span class="logo">MD</span>
-    <span class="toolbar-title">Markdown Previewer</span>
-    <div class="toolbar-actions">
-      <span id="word-count" class="stat">0 words</span>
-      <span id="char-count" class="stat">0 chars</span>
-      <span id="reading-time" class="stat"></span>
+    <span class="logo" title="Markdown Previewer">MD</span>
+    <div class="toolbar-actions" id="toolbar-actions">
+      <div class="tb-group" id="open-dropdown">
+        <button id="open-btn" class="tb-btn" title="Open files, folders or save">Open ▾</button>
+        <div class="dropdown" id="open-menu">
+          <button id="open-file-btn" class="menu-item" title="Open local .md file">Open file…</button>
+          <button id="open-dir-btn" class="menu-item" title="Open local directory">Open folder…</button>
+          <button id="save-file-btn" class="menu-item" title="Save file (Mod+S)" style="display:none">Save</button>
+        </div>
+      </div>
       <span class="tb-sep"></span>
-      <button id="copy-btn" title="Copy Markdown to clipboard">Copy</button>
-      <button id="export-btn" title="Export as HTML">Export</button>
-      <button id="clear-btn" title="Clear editor">Clear</button>
+      <button id="copy-btn" class="icon-btn" title="Copy Markdown to clipboard">📋</button>
+      <button id="find-btn" class="icon-btn" title="Find / Replace (Mod+F)">🔍</button>
+      <button id="emoji-btn" class="icon-btn" title="Insert emoji shortcode">😀</button>
+      <button id="pdf-btn" class="icon-btn" title="Preview and download as PDF">📄</button>
       <span class="tb-sep"></span>
-      <button id="open-file-btn" title="Open local .md file">File</button>
-      <button id="open-dir-btn" title="Open local directory">Dir</button>
-      <button id="save-file-btn" title="Save file (Mod+S)" style="display:none">Save</button>
-      <span id="open-file-name" class="stat" style="display:none"></span>
+      <button id="wrap-btn" class="tb-btn" title="Toggle word wrap">Wrap</button>
+      <button id="scroll-btn" class="tb-btn" title="Toggle synchronized scrolling">Sync</button>
+      <button id="toc-btn" class="tb-btn" title="Table of contents">TOC</button>
       <span class="tb-sep"></span>
-      <button id="find-btn" title="Find / Replace (Mod+F)">Find</button>
       <select id="font-select" title="Document font">
         <option value="system" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">System</option>
         <option value="serif" style="font-family: Georgia, 'Times New Roman', serif">Serif</option>
@@ -53,43 +56,53 @@
         <option value="impact" style="font-family: Impact, Haettenschweiler, 'Arial Black', sans-serif">Impact</option>
         <option value="comic" style="font-family: 'Comic Sans MS', 'Comic Sans', Chalkboard, cursive">Comic Sans</option>
       </select>
-      <select id="line-font-select" title="Apply font to selected text or the current line">
-        <option value="">Line font…</option>
-        <option value="remove">Remove font</option>
-        <option value="system" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">System</option>
-        <option value="serif" style="font-family: Georgia, 'Times New Roman', serif">Serif</option>
-        <option value="sans" style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif">Sans</option>
-        <option value="mono" style="font-family: 'SF Mono', 'Fira Code', Menlo, Consolas, monospace">Monospace</option>
-        <option value="times" style="font-family: 'Times New Roman', Times, serif">Times</option>
-        <option value="palatino" style="font-family: Palatino, 'Palatino Linotype', 'Book Antiqua', Georgia, serif">Palatino</option>
-        <option value="garamond" style="font-family: Garamond, Cambria, Georgia, serif">Garamond</option>
-        <option value="cambria" style="font-family: Cambria, Cochin, Georgia, serif">Cambria</option>
-        <option value="arial" style="font-family: Arial, Helvetica, sans-serif">Arial</option>
-        <option value="verdana" style="font-family: Verdana, Geneva, Tahoma, sans-serif">Verdana</option>
-        <option value="tahoma" style="font-family: Tahoma, Verdana, Geneva, sans-serif">Tahoma</option>
-        <option value="trebuchet" style="font-family: 'Trebuchet MS', 'Lucida Grande', 'Segoe UI', sans-serif">Trebuchet</option>
-        <option value="courier" style="font-family: 'Courier New', Courier, 'Lucida Console', monospace">Courier</option>
-        <option value="impact" style="font-family: Impact, Haettenschweiler, 'Arial Black', sans-serif">Impact</option>
-        <option value="comic" style="font-family: 'Comic Sans MS', 'Comic Sans', Chalkboard, cursive">Comic Sans</option>
-      </select>
-      <button id="font-dec-btn" title="Decrease font size">A−</button>
-      <button id="font-inc-btn" title="Increase font size">A+</button>
+      <button id="font-dec-btn" class="icon-btn" title="Decrease font size">A−</button>
+      <button id="font-inc-btn" class="icon-btn" title="Increase font size">A+</button>
       <span class="tb-sep"></span>
-      <button id="wrap-btn" title="Toggle word wrap">Wrap</button>
-      <button id="scroll-btn" title="Toggle synchronized scrolling">Sync</button>
-      <button id="emoji-btn" title="Insert emoji shortcode">😀</button>
-      <button id="toc-btn" title="Table of contents">TOC</button>
-      <button id="history-btn" title="Version history">Hist</button>
-      <span class="tb-sep"></span>
-      <button id="vim-btn" title="Toggle Vim keybindings">Vim</button>
-      <button id="zen-btn" title="Zen mode — hide everything but editor and preview">Zen</button>
-      <button id="fullscreen-btn" title="Toggle fullscreen">⛶</button>
-      <button id="print-btn" title="Print or export as PDF">Print</button>
-      <button id="pdf-btn" title="Preview and download as PDF">PDF</button>
-      <button id="cheatsheet-btn" title="Keyboard shortcuts (?)">?</button>
-      <span class="tb-sep"></span>
-      <button id="custom-css-btn" title="Load custom preview CSS">CSS</button>
-      <button id="theme-btn" title="Switch color theme">Dark</button>
+      <button id="theme-btn" class="icon-btn" title="Switch color theme">☾</button>
+      <div class="tb-group" id="overflow-dropdown">
+        <button id="overflow-btn" class="icon-btn" title="More actions">⋯</button>
+        <div class="dropdown dropdown-right" id="overflow-menu">
+          <button id="clear-btn" class="menu-item" title="Clear editor">Clear</button>
+          <button id="export-btn" class="menu-item" title="Export as HTML">Export HTML</button>
+          <button id="print-btn" class="menu-item" title="Print">Print</button>
+          <span class="menu-sep"></span>
+          <span class="menu-label">View</span>
+          <button id="wrap-mirror" class="menu-item" title="Toggle word wrap">Word wrap</button>
+          <button id="scroll-mirror" class="menu-item" title="Toggle synchronized scrolling">Sync scroll</button>
+          <button id="toc-mirror" class="menu-item" title="Table of contents">Table of contents</button>
+          <span class="menu-sep"></span>
+          <button id="history-btn" class="menu-item" title="Version history">Version history</button>
+          <span class="menu-sep"></span>
+          <button id="vim-btn" class="menu-item" title="Toggle Vim keybindings">Vim keybindings</button>
+          <button id="zen-btn" class="menu-item" title="Zen mode — hide everything but editor and preview">Zen mode</button>
+          <button id="fullscreen-btn" class="menu-item" title="Toggle fullscreen">Fullscreen</button>
+          <span class="menu-sep"></span>
+          <button id="custom-css-btn" class="menu-item" title="Load custom preview CSS">Custom preview CSS…</button>
+          <button id="cheatsheet-btn" class="menu-item" title="Keyboard shortcuts (?)">Keyboard shortcuts</button>
+          <span class="menu-sep"></span>
+          <span class="menu-label">Line font</span>
+          <select id="line-font-select" title="Apply font to selected text or the current line">
+            <option value="">Line font…</option>
+            <option value="remove">Remove font</option>
+            <option value="system" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">System</option>
+            <option value="serif" style="font-family: Georgia, 'Times New Roman', serif">Serif</option>
+            <option value="sans" style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif">Sans</option>
+            <option value="mono" style="font-family: 'SF Mono', 'Fira Code', Menlo, Consolas, monospace">Monospace</option>
+            <option value="times" style="font-family: 'Times New Roman', Times, serif">Times</option>
+            <option value="palatino" style="font-family: Palatino, 'Palatino Linotype', 'Book Antiqua', Georgia, serif">Palatino</option>
+            <option value="garamond" style="font-family: Garamond, Cambria, Georgia, serif">Garamond</option>
+            <option value="cambria" style="font-family: Cambria, Cochin, Georgia, serif">Cambria</option>
+            <option value="arial" style="font-family: Arial, Helvetica, sans-serif">Arial</option>
+            <option value="verdana" style="font-family: Verdana, Geneva, Tahoma, sans-serif">Verdana</option>
+            <option value="tahoma" style="font-family: Tahoma, Verdana, Geneva, sans-serif">Tahoma</option>
+            <option value="trebuchet" style="font-family: 'Trebuchet MS', 'Lucida Grande', 'Segoe UI', sans-serif">Trebuchet</option>
+            <option value="courier" style="font-family: 'Courier New', Courier, 'Lucida Console', monospace">Courier</option>
+            <option value="impact" style="font-family: Impact, Haettenschweiler, 'Arial Black', sans-serif">Impact</option>
+            <option value="comic" style="font-family: 'Comic Sans MS', 'Comic Sans', Chalkboard, cursive">Comic Sans</option>
+          </select>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -125,6 +138,14 @@
       </div>
     </div>
   </div>
+
+  <footer id="status-bar" class="status-bar">
+    <span id="word-count" class="stat">0 words</span>
+    <span id="char-count" class="stat">0 chars</span>
+    <span id="reading-time" class="stat"></span>
+    <span class="status-spacer"></span>
+    <span id="open-file-name" class="stat" style="display:none"></span>
+  </footer>
 
   <!-- canonical A4 sheets for PDF download (offscreen, see style.css) -->
   <div id="pdf-canonical" aria-hidden="true"></div>

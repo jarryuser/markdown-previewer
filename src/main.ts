@@ -86,6 +86,7 @@ const THEME_KEY = 'md-theme';
 const THEMES = ['light', 'dark', 'sepia', 'nord'] as const;
 type Theme = typeof THEMES[number];
 const THEME_LABELS: Record<Theme, string> = { light: 'Light', dark: 'Dark', sepia: 'Sepia', nord: 'Nord' };
+const THEME_ICONS: Record<Theme, string> = { light: '☀️', dark: '🌙', sepia: '☕', nord: '❄️' };
 function isDarkTheme(t: Theme): boolean { return t === 'dark' || t === 'nord'; }
 
 // ── Tab management ──────────────────────────────────────────────────────────────
@@ -681,7 +682,8 @@ exportBtn.addEventListener('click', () => {
 
 function applyTheme(): void {
   document.documentElement.dataset['theme'] = theme;
-  themeBtn.textContent = THEME_LABELS[theme];
+  themeBtn.textContent = THEME_ICONS[theme];
+  themeBtn.title = `Switch color theme — ${THEME_LABELS[theme]}`;
   localStorage.setItem(THEME_KEY, theme);
   editorView.dispatch({
     effects: themeCompartment.reconfigure(isDarkTheme(theme) ? oneDark : []),
@@ -877,6 +879,81 @@ function applyFontSize(): void {
 
 fontDecBtn.addEventListener('click', () => { fontSize--; applyFontSize(); });
 fontIncBtn.addEventListener('click', () => { fontSize++; applyFontSize(); });
+
+// ── Toolbar menus & adaptive overflow ───────────────────────────────────────
+
+const toolbarEl = document.querySelector('.toolbar') as HTMLElement;
+const toolbarActions = document.getElementById('toolbar-actions') as HTMLElement;
+const openBtn = document.getElementById('open-btn') as HTMLButtonElement;
+const overflowBtn = document.getElementById('overflow-btn') as HTMLButtonElement;
+const openDropdown = document.getElementById('open-dropdown') as HTMLElement;
+const overflowDropdown = document.getElementById('overflow-dropdown') as HTMLElement;
+
+// items hidden first when the toolbar runs out of room — least important last
+const reflowOrder = [tocBtn, scrollBtn, wrapBtn];
+// overflow-menu mirrors keep those actions reachable while collapsed
+const wrapMirror = document.getElementById('wrap-mirror') as HTMLButtonElement;
+const scrollMirror = document.getElementById('scroll-mirror') as HTMLButtonElement;
+const tocMirror = document.getElementById('toc-mirror') as HTMLButtonElement;
+const reflowPairs: Array<[HTMLButtonElement, HTMLButtonElement]> = [
+  [wrapBtn, wrapMirror],
+  [scrollBtn, scrollMirror],
+  [tocBtn, tocMirror],
+];
+wrapMirror.addEventListener('click', () => wrapBtn.click());
+scrollMirror.addEventListener('click', () => scrollBtn.click());
+tocMirror.addEventListener('click', () => tocBtn.click());
+
+function reflowToolbar(): void {
+  for (const el of reflowOrder) el.hidden = false;
+  const avail = toolbarEl.clientWidth - toolbarActions.offsetLeft;
+  if (!avail) return;
+  let i = 0;
+  while (toolbarActions.scrollWidth > avail && i < reflowOrder.length) {
+    reflowOrder[i].hidden = true;
+    i++;
+  }
+  for (const [tool, mirror] of reflowPairs) mirror.hidden = !tool.hidden;
+}
+
+function closeMenus(): void {
+  openDropdown.classList.remove('open');
+  overflowDropdown.classList.remove('open');
+  openBtn.classList.remove('active');
+  overflowBtn.classList.remove('active');
+}
+
+function toggleMenu(shellId: string, triggerId: string): void {
+  const shell = document.getElementById(shellId) as HTMLElement;
+  const trigger = document.getElementById(triggerId) as HTMLButtonElement;
+  const isOpen = shell.classList.contains('open');
+  closeMenus();
+  if (!isOpen) {
+    shell.classList.add('open');
+    trigger.classList.add('active');
+  }
+}
+
+openBtn.addEventListener('click', () => toggleMenu('open-dropdown', 'open-btn'));
+overflowBtn.addEventListener('click', () => toggleMenu('overflow-dropdown', 'overflow-btn'));
+
+for (const shell of [openDropdown, overflowDropdown]) {
+  shell.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('.menu-item')) closeMenus();
+  });
+}
+
+document.addEventListener('click', (e) => {
+  if (!(e.target as HTMLElement).closest('.tb-group')) closeMenus();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && (openDropdown.classList.contains('open') || overflowDropdown.classList.contains('open'))) {
+    closeMenus();
+  }
+});
+
+reflowToolbar();
+new ResizeObserver(reflowToolbar).observe(toolbarEl);
 
 vimBtn.addEventListener('click', () => {
   vimEnabled = !vimEnabled;

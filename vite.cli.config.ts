@@ -11,7 +11,7 @@ export default defineConfig({
     emptyOutDir: false,
     target: 'node18',
     rollupOptions: {
-      external: [/^node:/, 'blessed'],
+      external: [/^node:/, 'blessed', 'puppeteer-core'],
       output: {
         banner: '#!/usr/bin/env node',
       },

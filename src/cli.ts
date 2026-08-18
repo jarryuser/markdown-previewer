@@ -3,7 +3,7 @@ import type { ServerResponse, IncomingMessage } from 'node:http';
 import { readFileSync, writeFileSync, watchFile, watch, statSync, readdirSync } from 'node:fs';
 import { resolve, dirname, extname, basename, relative, join } from 'node:path';
 import { homedir } from 'node:os';
-import { exec } from 'node:child_process';
+import { exec, spawn } from 'node:child_process';
 import type { AddressInfo } from 'node:net';
 import { marked, Marked } from 'marked';
 import blessed from 'blessed';
@@ -12,6 +12,7 @@ import markedFootnote from 'marked-footnote';
 import hljs from 'highlight.js';
 import styles from './style.css?raw';
 import { markedEmoji } from './emoji.js';
+import { createPdfExporter } from './cli-pdf.js';
 
 marked.use(markedKatex({ throwOnError: false }));
 marked.use(markedEmoji);
@@ -905,6 +906,22 @@ function findInTree(nodes: FileNode[], name: string): string | null {
   return null;
 }
 
+// depth-first search for the first .md file in the tree (used by --pdf)
+function firstMarkdownPath(dir: string): string | null {
+  const nodes = buildTree(dir, dir);
+  const walk = (list: FileNode[]): string | null => {
+    for (const node of list) {
+      if (node.path) return node.path;
+      if (node.children) {
+        const found = walk(node.children);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  return walk(nodes);
+}
+
 // shared <head> snippets
 const HLJS_CSS = `<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" />`;
 const KATEX_CSS = `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />`;
@@ -931,6 +948,7 @@ function buildFilePage(md: string, title: string): string {
   <style>
     ${styles}
     html, body { height: auto; overflow: auto; }
+    @page { size: A4; }
   </style>
   ${MERMAID_JS}
   ${THEME_SCRIPT}
@@ -940,6 +958,7 @@ function buildFilePage(md: string, title: string): string {
   <div style="max-width: 860px; margin: 0 auto; padding: 32px 28px;">
     <div class="prose">${body}</div>
   </div>
+  <script>setTimeout(function(){ window.__mdpReady = true; }, 700);</script>
 </body>
 </html>`;
 }
@@ -1406,9 +1425,13 @@ function buildDirPage(dirName: string): string {
 // auto-shutdown when all browser tabs close (disabled in TUI/terminal modes)
 const sseClients = new Set<ServerResponse>();
 let shutdownTimer: ReturnType<typeof setTimeout> | null = null;
+// set while --pdf --watch is running: the headless PDF page also opens an SSE
+// connection, so without this the server would shut down after each export
+let pdfKeepAlive = false;
 
 function scheduleShutdown(): void {
   if (isTui || isTerminal) return;
+  if (pdfKeepAlive) return;
   if (shutdownTimer) return;
   shutdownTimer = setTimeout(() => {
     console.log('\nBrowser closed - stopping server');
@@ -1420,6 +1443,19 @@ function cancelShutdown(): void {
   if (!shutdownTimer) return;
   clearTimeout(shutdownTimer);
   shutdownTimer = null;
+}
+
+// force a full tmux client redraw after a re-export. When a TUI viewer like
+// tdf repaints while its pane is not focused, some terminals leave its new
+// content drawn over the active pane; refresh-client repaints every pane from
+// tmux's buffers and clears that ghost without moving focus. MDP_TMUX_REFRESH=0
+// disables it.
+function refreshTmuxClient(): void {
+  if (!process.env['TMUX']) return;
+  if (process.env['MDP_TMUX_REFRESH'] === '0') return;
+  try {
+    exec('tmux refresh-client', { timeout: 500 }, () => { /* best-effort */ });
+  } catch { /* best-effort */ }
 }
 
 // callback invoked when a watched file changes (used by TUI to refresh preview)
@@ -1434,6 +1470,12 @@ Options:
   -h, --help             Show this help message
   -t, --terminal         Render in a terminal pager (scrollable, no browser)
       --tui              Open interactive TUI: file tree + preview
+      --pdf              Render a file (or the first .md of a directory) to PDF
+  -o, --out <path>       Output path for --pdf (default: next to the input)
+  -w, --watch            Re-export the PDF whenever the .md changes
+  -l, --live             Shortcut for --watch: also open the PDF in a live
+                         terminal viewer (tdf by default, MDP_PDF_VIEWER to
+                         change) that auto-reloads on every re-export
       --port <number>    Use a fixed port instead of a random one
       --theme <name>     Color scheme for terminal and TUI output
                          (${THEME_NAMES.join(', ')}; default: dark)
@@ -1443,6 +1485,10 @@ Use  mdp <number>  to reopen an entry.\n`);
 }
 
 let portArg: number | undefined;
+let isPdf = false;
+let isWatch = false;
+let isLive = false;
+let outArg: string | undefined;
 const pathArgs: string[] = [];
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--port' && args[i + 1]) {
@@ -1457,6 +1503,15 @@ for (let i = 0; i < args.length; i++) {
     i++;
   } else if (args[i] === '--tui' || args[i] === '-t' || args[i] === '--terminal') {
     // handled below
+  } else if (args[i] === '--pdf') {
+    isPdf = true;
+  } else if (args[i] === '--watch' || args[i] === '-w') {
+    isWatch = true;
+  } else if (args[i] === '--live' || args[i] === '-l') {
+    isLive = true;
+  } else if ((args[i] === '--out' || args[i] === '-o') && args[i + 1]) {
+    outArg = args[i + 1];
+    i++;
   } else {
     pathArgs.push(args[i]);
   }
@@ -1464,6 +1519,13 @@ for (let i = 0; i < args.length; i++) {
 
 const isTui = args.includes('--tui');
 const isTerminal = args.includes('-t') || args.includes('--terminal');
+
+if (isLive) {
+  isPdf = true;
+  isWatch = true;
+}
+// --watch / --live imply PDF export
+if (isWatch && !isPdf) isPdf = true;
 
 // no path given - show recent files list
 if (pathArgs.length === 0) {
@@ -1594,6 +1656,24 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
         const title = basename(p).replace(/\.md$/, '');
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ html, title }));
+      } catch {
+        res.writeHead(404); res.end();
+      }
+      return;
+    }
+
+    // standalone PDF page for --pdf in directory mode (same path guard as /__file)
+    if (pathname === '/__pdf') {
+      const p = url.searchParams.get('p') ?? '';
+      if (!p) { res.writeHead(400); res.end(); return; }
+      const filePath = resolve(argPath, p);
+      if (!filePath.startsWith(argPath + '/') || !filePath.endsWith('.md')) {
+        res.writeHead(403); res.end(); return;
+      }
+      try {
+        const content = readFileSync(filePath, 'utf-8');
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(buildFilePage(content, basename(p).replace(/\.md$/, '')));
       } catch {
         res.writeHead(404); res.end();
       }
@@ -2201,9 +2281,137 @@ if (isTerminal) {
   screen.render();
 }
 
-if (!isTerminal) server.listen(portArg ?? 0, '127.0.0.1', () => {
+if (!isTerminal) server.listen(portArg ?? 0, '127.0.0.1', async () => {
   const { port } = server.address() as AddressInfo;
   const previewUrl = `http://localhost:${port}`;
+
+  if (isPdf) {
+    // keep the server alive in watch mode: the headless PDF page also opens an
+    // SSE connection, whose disconnect could otherwise trigger auto-shutdown
+    if (isWatch) pdfKeepAlive = true;
+
+    // pick the file to convert: the argument itself, or the first .md of a directory
+    let pdfPath: string;
+    let pdfPageUrl: string;
+    if (isDir) {
+      const first = firstMarkdownPath(argPath);
+      if (!first) {
+        console.error(`Error: no .md files in ${argPath} to convert.`);
+        process.exit(1);
+      }
+      pdfPath = resolve(argPath, first);
+      pdfPageUrl = `${previewUrl}/__pdf?p=${encodeURIComponent(first)}`;
+    } else {
+      pdfPath = argPath;
+      pdfPageUrl = `${previewUrl}/`;
+    }
+
+    const outPath = outArg ? resolve(outArg) : resolve(dirname(pdfPath), basename(pdfPath).replace(/\.md$/i, '') + '.pdf');
+
+    console.log(`Converting: ${pdfPath}`);
+    console.log(`Output:     ${outPath}`);
+
+    const exporter = await createPdfExporter();
+    if (!('close' in exporter)) {
+      console.error(`PDF export failed: ${'error' in exporter ? exporter.error : 'could not start browser'}`);
+      process.exit(1);
+    }
+
+    const doExport = async (first: boolean): Promise<boolean> => {
+      const result = await exporter.exportPage(pdfPageUrl, outPath);
+      if (!result.ok) {
+        if (first) console.error(`PDF export failed: ${result.error}`);
+        else console.error(`PDF: update failed: ${result.error} (keeping previous ${outPath})`);
+        return false;
+      }
+      if (first) console.log(`PDF: saved ${outPath}`);
+      else console.log(`PDF: updated ${outPath}  ${new Date().toLocaleTimeString()}`);
+      refreshTmuxClient();
+      return true;
+    };
+
+    if (!(await doExport(true))) {
+      await exporter.close();
+      process.exit(1);
+    }
+
+    if (!isWatch) {
+      await exporter.close();
+      process.exit(0);
+      return;
+    }
+
+    if (isWatch) {
+      console.log(`Watching ${pdfPath} for changes... (Ctrl+C to stop)`);
+      let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let busy = false;
+    let pending = false;
+    const schedule = () => {
+      if (debounceTimer) return;
+      debounceTimer = setTimeout(async () => {
+        debounceTimer = null;
+        if (busy) {
+          pending = true;
+          return;
+        }
+        busy = true;
+        do {
+          await doExport(false);
+          pending = false;
+        } while (pending);
+        busy = false;
+      }, 300);
+    };
+    watchFile(pdfPath, { interval: 300 }, schedule);
+
+    if (isLive) {
+      const viewer = process.env['MDP_PDF_VIEWER'] || 'tdf';
+      console.log(`Viewer:     ${viewer} ${outPath}`);
+      const spawnOpts: Parameters<typeof spawn>[2] = { stdio: 'inherit' };
+      // Under tmux, tdf (via ratatui-image) detects the outer terminal through
+      // TERM/ITERM_SESSION_ID/TERM_PROGRAM and draws PDF pages with iTerm2/kitty
+      // image escape sequences wrapped in tmux passthrough. Those bypass tmux's
+      // cell model, so their pixels land over the active pane and no client
+      // redraw can erase them. Hide those hints and drop the tmux TERM prefix to
+      // force the half-block text renderer, which tmux clips like normal cells.
+      // Set MDP_PDF_VIEWER_TMUX_GRAPHICS=1 to keep native image rendering.
+      if (process.env['TMUX'] && process.env['MDP_PDF_VIEWER_TMUX_GRAPHICS'] !== '1') {
+        const env = { ...process.env };
+        for (const k of [
+          'TERM_PROGRAM', 'TERM_PROGRAM_VERSION', 'ITERM_SESSION_ID',
+          'WEZTERM_EXECUTABLE', 'WEZTERM_PANE', 'KITTY_WINDOW_ID',
+          'LC_TERMINAL', 'LC_TERMINAL_VERSION', 'KONSOLE_VERSION',
+        ]) delete env[k];
+        env['TERM'] = 'screen-256color';
+        spawnOpts.env = env;
+      }
+      const viewerProc = spawn(viewer, [outPath], spawnOpts);
+      viewerProc.on('error', (err) => {
+        console.error(`Could not start ${viewer}: ${err.message}. Install it or set MDP_PDF_VIEWER.`);
+        if (debounceTimer) clearTimeout(debounceTimer);
+        void exporter.close().then(() => process.exit(0));
+      });
+      viewerProc.on('exit', (code) => {
+        if (code !== 0) console.error(`Viewer exited with code ${code}.`);
+        if (debounceTimer) clearTimeout(debounceTimer);
+        void exporter.close().then(() => process.exit(0));
+      });
+      // let the viewer finish its first render, then clear any ghost from the
+      // active pane (see refreshTmuxClient)
+      setTimeout(refreshTmuxClient, 800);
+    }
+
+    const stopWatching = async () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      await exporter.close();
+      process.exit(0);
+    };
+    process.on('SIGINT', stopWatching);
+    process.on('SIGTERM', stopWatching);
+    return;
+  }
+  }
+
   if (isDir) {
     console.log(`Directory: ${argPath}`);
   } else {

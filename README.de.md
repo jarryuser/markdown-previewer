@@ -116,11 +116,34 @@ mdp ~/notes/ --tui
 # pick a color scheme for terminal/TUI output (dark, light, sepia, nord)
 mdp README.md -t --theme nord
 mdp ~/notes/ --tui --theme sepia
+
+# export to PDF (A4, via your system's headless Chrome/Chromium/Edge)
+mdp README.md --pdf
+mdp ~/notes/ --pdf
+
+# choose the output path
+mdp README.md --pdf -o ~/out/readme.pdf
+
+# re-export whenever the file changes
+mdp README.md --pdf -w
+
+# ...and live-view the PDF in a terminal viewer as it updates
+mdp ~/notes/ --pdf -l
 ```
 
 Der Browser öffnet sich automatisch. Bearbeiten Sie Dateien in einem beliebigen Editor – die Seite wird bei jedem Speichern neu geladen.
 
 Im Verzeichnis-Modus drücken Sie `/`, um die Dateibaum nach Namen zu filtern, `j`/`k` zum Navigieren und `c`, um alle Ordner zuzuklappen oder aufzuklappen.
+
+### PDF-Export
+
+`--pdf` rendert die aktuelle Datei (bzw. die erste `.md` eines Verzeichnisses) als A4-PDF mit dem installierten Chrome, Chromium oder Edge im Headless-Modus – kein gebündelter Browser nötig. Das Ergebnis wird atomar geschrieben (Temp-Datei + Umbenennen), sodass Watcher nie eine halb geschriebene PDF sehen.
+
+- Die Ausgabe liegt standardmäßig als `<Datei>.pdf` neben der Eingabe; mit `-o, --out <pfad>` überschreiben.
+- Wird kein Browser gefunden, installieren Sie einen oder setzen Sie `MDP_CHROME_PATH` auf dessen ausführbare Datei.
+- `-w, --watch` exportiert die PDF (debounced) bei jeder Änderung der `.md` neu.
+- `-l, --live` ist eine Abkürzung für `--watch` und öffnet die PDF zusätzlich in einem Terminal-Betrachter. Standard ist `tdf`; mit `MDP_PDF_VIEWER` kann ein anderer gesetzt werden – der Betrachter lädt nach jedem Export automatisch neu.
+- In tmux wird der Betrachter im textbasierten Halbblock-Modus gestartet, damit tmux ihn wie normale Zellen rendert. `MDP_PDF_VIEWER_TMUX_GRAPHICS=1` behält die native Bilddarstellung bei.
 
 ### TUI-Modus
 
@@ -205,6 +228,7 @@ npm run build     # production build -> dist/
 - [x] **Drucken / PDF-Export** – Der Druck-Button öffnet den Browser-Druckdialog mit druckfreundlichem CSS, das den Editor ausblendet und nur den Text anzeigt
 - [x] **Benutzerdefinierte Themen** – Helle, dunkle, Sepia- und Nord-Farbschemas; der Themen-Button schaltet zwischen ihnen um und die Auswahl bleibt nach Neuladen erhalten
 - [x] **`--theme`-Flag** – ein Farbschema für Terminal- und TUI-Ausgabe wählen: `mdp README.md -t --theme nord`
+- [x] **CLI-PDF-Export** (`--pdf`) – rendert eine Datei (bzw. die erste `.md` eines Verzeichnisses) als A4-PDF über headless Chrome/Chromium/Edge; `-o/--out` setzt den Pfad, `-w/--watch` exportiert bei jeder Änderung neu, `-l/--live` öffnet die PDF zusätzlich in einem Live-Terminal-Betrachter
 - [x] **Emoji-Shortcodes** – wandelt `:smile:` in der Vorschau in 😄 um, GitHub-Stil
 - [x] **Fußnoten** – rendert Fußnoten-Syntax (`[^1]`) in der Vorschau
 

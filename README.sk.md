@@ -116,11 +116,34 @@ mdp ~/notes/ --tui
 # pick a color scheme for terminal/TUI output (dark, light, sepia, nord)
 mdp README.md -t --theme nord
 mdp ~/notes/ --tui --theme sepia
+
+# export to PDF (A4, via your system's headless Chrome/Chromium/Edge)
+mdp README.md --pdf
+mdp ~/notes/ --pdf
+
+# choose the output path
+mdp README.md --pdf -o ~/out/readme.pdf
+
+# re-export whenever the file changes
+mdp README.md --pdf -w
+
+# ...and live-view the PDF in a terminal viewer as it updates
+mdp ~/notes/ --pdf -l
 ```
 
 Prehliadač sa otvorí automaticky. Upravujte súbory v ľubovoľnom editore – stránka sa obnoví pri každom uložení
 
 V režime adresára stlačte `/` na filtrovanie stromu súborov podľa názvu, `j`/`k` na navigáciu a `c` na zbalenie alebo rozbalenie všetkých priečinkov
+
+### Export do PDF
+
+`--pdf` vykreslí aktuálny súbor (alebo prvý `.md` z adresára) do PDF formátu A4 pomocou systémového Chrome, Chromium alebo Edge v headless režime – žiadny dodávaný prehliadač netreba. Výsledok sa zapisuje atomicky (dočasný súbor + premenovanie), takže watchery nikdy nevidia napoly zapísané PDF.
+
+- Výstup je štandardne `<súbor>.pdf` vedľa vstupu; zmeňte ho parametrom `-o, --out <cesta>`.
+- Ak sa nenájde žiadny prehliadač, nainštalujte ho alebo nastavte `MDP_CHROME_PATH` na jeho spustiteľný súbor.
+- `-w, --watch` opätovne exportuje PDF (s debounce) pri každej zmene `.md`.
+- `-l, --live` je skratka pre `--watch`, ktorá PDF navyše otvorí v terminálovom prehliadači. Predvolený je `tdf`; iný nastavíte cez `MDP_PDF_VIEWER` – prehliadač sa automaticky obnoví po každom exporte.
+- V tmux sa prehliadač spúšťa v textovom half-block režime, aby ho tmux vykreslil ako bežné bunky. `MDP_PDF_VIEWER_TMUX_GRAPHICS=1` zachová pôvodné vykresľovanie obrázkov.
 
 ### Režim TUI
 
@@ -205,6 +228,7 @@ npm run build     # production build -> dist/
 - [x] **Tlač / export PDF** - Tlačidlo Print otvorí dialóg tlače prehliadača s CSS vhodným na tlač, ktoré skryje editor a ponechá iba text
 - [x] **Vlastné témy** - Farebné schémy Light, Dark, Sepia a Nord; tlačidlo Theme medzi nimi prepína a voľba pretrváva pri obnovení stránky
 - [x] **Prepínač `--theme`** - vyberte farebnú schému pre terminálový a TUI výstup: `mdp README.md -t --theme nord`
+- [x] **Export do PDF cez CLI** (`--pdf`) - vykreslí súbor (alebo prvý `.md` z adresára) do PDF formátu A4 cez headless systémový Chrome/Chromium/Edge; `-o/--out` nastavuje cestu, `-w/--watch` opätovne exportuje pri každej zmene, `-l/--live` navyše otvára PDF v živom terminálovom prehliadači
 - [x] **Emoji skratky** - mení `:smile:` na 😄 v náhľade, v štýle GitHub
 - [x] **Poznámky pod čiarou** - vykresľuje syntax poznámok pod čiarou (`[^1]`) v náhľade
 

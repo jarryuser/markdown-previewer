@@ -117,11 +117,34 @@ mdp ~/notes/ --tui
 # pick a color scheme for terminal/TUI output (dark, light, sepia, nord)
 mdp README.md -t --theme nord
 mdp ~/notes/ --tui --theme sepia
+
+# export to PDF (A4, via your system's headless Chrome/Chromium/Edge)
+mdp README.md --pdf
+mdp ~/notes/ --pdf
+
+# choose the output path
+mdp README.md --pdf -o ~/out/readme.pdf
+
+# re-export whenever the file changes
+mdp README.md --pdf -w
+
+# ...and live-view the PDF in a terminal viewer as it updates
+mdp ~/notes/ --pdf -l
 ```
 
 The browser opens automatically. Edit files in any editor - the page reloads on each save
 
 In directory mode, press `/` to filter the file tree by name, `j`/`k` to navigate, and `c` to collapse or expand all folders
+
+### PDF export
+
+`--pdf` renders the current file (or the first `.md` of a directory) to an A4 PDF using the system Chrome, Chromium or Edge in headless mode - no bundled browser needed. The result is written atomically (temp file + rename), so watchers never see a half-written PDF.
+
+- Default output is `<file>.pdf` next to the input; override it with `-o, --out <path>`.
+- If no browser is found, install one or point `MDP_CHROME_PATH` at its executable.
+- `-w, --watch` re-exports the PDF (debounced) every time the `.md` changes.
+- `-l, --live` is a shortcut for `--watch` that also opens the PDF in a terminal viewer (`tdf` by default, change it via `MDP_PDF_VIEWER`) and reloads it automatically on every re-export.
+- Inside tmux, the viewer runs in a text-based half-block mode so tmux renders it like normal cells. Set `MDP_PDF_VIEWER_TMUX_GRAPHICS=1` to keep native image rendering.
 
 ### TUI mode
 
@@ -206,6 +229,7 @@ npm run build     # production build -> dist/
 - [x] **Print / PDF export** - Print button opens the browser print dialog with print-friendly CSS that hides the editor and keeps only the prose
 - [x] **Custom themes** - Light, Dark, Sepia and Nord color schemes; Theme button cycles between them and the choice persists across reloads
 - [x] **`--theme` flag** - pick a color scheme for terminal and TUI output: `mdp README.md -t --theme nord`
+- [x] **CLI PDF export** (`--pdf`) - renders a file (or the first `.md` of a directory) to an A4 PDF via headless system Chrome/Chromium/Edge; `-o/--out` sets the path, `-w/--watch` re-exports on every change, `-l/--live` also opens the PDF in a live terminal viewer
 - [x] **Emoji shortcodes** - turns `:smile:` into 😄 in the preview, GitHub-style
 - [x] **Footnotes** - renders footnote syntax (`[^1]`) in the preview
 - [x] **Multiple tabs** - work on several documents at once and switch between them, without relying on the File System Access API

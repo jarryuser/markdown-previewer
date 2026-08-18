@@ -143,7 +143,7 @@ In directory mode, press `/` to filter the file tree by name, `j`/`k` to navigat
 - Default output is `<file>.pdf` next to the input; override it with `-o, --out <path>`.
 - If no browser is found, install one or point `MDP_CHROME_PATH` at its executable.
 - `-w, --watch` re-exports the PDF (debounced) every time the `.md` changes.
-- `-l, --live` is a shortcut for `--watch` that also opens the PDF in a terminal viewer (`tdf` by default, change it via `MDP_PDF_VIEWER`) and reloads it automatically on every re-export.
+- `-l, --live` is a shortcut for `--watch` that also opens the PDF in a terminal viewer. This requires a PDF viewer for the terminal - `tdf` is the preferred one and the default; set `MDP_PDF_VIEWER` to use another. The viewer reloads the PDF automatically after every re-export.
 - Inside tmux, the viewer runs in a text-based half-block mode so tmux renders it like normal cells. Set `MDP_PDF_VIEWER_TMUX_GRAPHICS=1` to keep native image rendering.
 
 ### TUI mode

@@ -142,7 +142,7 @@ Im Verzeichnis-Modus drücken Sie `/`, um die Dateibaum nach Namen zu filtern, `
 - Die Ausgabe liegt standardmäßig als `<Datei>.pdf` neben der Eingabe; mit `-o, --out <pfad>` überschreiben.
 - Wird kein Browser gefunden, installieren Sie einen oder setzen Sie `MDP_CHROME_PATH` auf dessen ausführbare Datei.
 - `-w, --watch` exportiert die PDF (debounced) bei jeder Änderung der `.md` neu.
-- `-l, --live` ist eine Abkürzung für `--watch` und öffnet die PDF zusätzlich in einem Terminal-Betrachter. Standard ist `tdf`; mit `MDP_PDF_VIEWER` kann ein anderer gesetzt werden – der Betrachter lädt nach jedem Export automatisch neu.
+- `-l, --live` ist eine Abkürzung für `--watch` und öffnet die PDF zusätzlich in einem Terminal-Betrachter. Dafür muss ein PDF-Betrachter für das Terminal installiert sein – bevorzugt wird `tdf` (Standard); mit `MDP_PDF_VIEWER` kann ein anderer gesetzt werden. Der Betrachter lädt die PDF nach jedem Export automatisch neu.
 - In tmux wird der Betrachter im textbasierten Halbblock-Modus gestartet, damit tmux ihn wie normale Zellen rendert. `MDP_PDF_VIEWER_TMUX_GRAPHICS=1` behält die native Bilddarstellung bei.
 
 ### TUI-Modus

@@ -142,7 +142,7 @@ V režime adresára stlačte `/` na filtrovanie stromu súborov podľa názvu, `
 - Výstup je štandardne `<súbor>.pdf` vedľa vstupu; zmeňte ho parametrom `-o, --out <cesta>`.
 - Ak sa nenájde žiadny prehliadač, nainštalujte ho alebo nastavte `MDP_CHROME_PATH` na jeho spustiteľný súbor.
 - `-w, --watch` opätovne exportuje PDF (s debounce) pri každej zmene `.md`.
-- `-l, --live` je skratka pre `--watch`, ktorá PDF navyše otvorí v terminálovom prehliadači. Predvolený je `tdf`; iný nastavíte cez `MDP_PDF_VIEWER` – prehliadač sa automaticky obnoví po každom exporte.
+- `-l, --live` je skratka pre `--watch`, ktorá PDF navyše otvorí v terminálovom prehliadači. Vyžaduje sa nainštalovaný PDF prehliadač pre terminál – preferovaný je `tdf` (predvolený); iný nastavíte cez `MDP_PDF_VIEWER`. Prehliadač sa po každom exporte automaticky obnoví.
 - V tmux sa prehliadač spúšťa v textovom half-block režime, aby ho tmux vykreslil ako bežné bunky. `MDP_PDF_VIEWER_TMUX_GRAPHICS=1` zachová pôvodné vykresľovanie obrázkov.
 
 ### Režim TUI

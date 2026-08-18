@@ -251,6 +251,10 @@ npm run build     # production build -> dist/
 
 ---
 
+## Вклад
+
+Вклад приветствуется! Смотрите [CONTRIBUTING.md](CONTRIBUTING.md) для настройки разработки, структуры проекта и рабочего процесса.
+
 ## Лицензия
 
 MIT © [Dmytro Filiurskyi](https://github.com/jarryuser)

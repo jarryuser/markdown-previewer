@@ -251,6 +251,10 @@ npm run build     # production build -> dist/
 
 ---
 
+## Príspevky
+
+Príspevky sú vítané! Pozrite si [CONTRIBUTING.md](CONTRIBUTING.md) pre nastavenie vývoja, štruktúru projektu a workflow.
+
 ## Licencia
 
 MIT © [Dmytro Filiurskyi](https://github.com/jarryuser)
